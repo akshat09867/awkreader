@@ -143,3 +143,47 @@ test_that("pattern.fread correctly evaluates regex and connectors", {
     expect_true("source_file" %in% names(res_titanic))
   }
 })
+
+# GROUP 7: Delimiter Flexibility (delim parameter)
+test_that("filtered.fread correctly handles custom delimiters", {
+  # 1. Setup a temporary pipe-separated file
+  tmp_file <- tempfile(fileext = ".psv")
+  on.exit(unlink(tmp_file))
+
+  writeLines(c(
+    "user|item|rating",
+    "user_A|item_X|5",
+    "user_B|item_Y|3",
+    "user_C|item_Z|5"
+  ), tmp_file)
+
+  # 2. Test data parsing with the custom delimiter
+  res_delim <- filtered.fread(
+    the.files = tmp_file,
+    the.filter = "rating == 5",
+    delim = "|",
+    include.filename = FALSE
+  )
+
+  expect_s3_class(res_delim, "data.table")
+  expect_equal(nrow(res_delim), 2)
+  expect_equal(res_delim$user, c("user_A", "user_C"))
+
+  # 3. Test that the AWK command accurately injects the field separator flag
+  res_code_delim <- filtered.fread(
+    the.files = tmp_file,
+    the.filter = "rating == 5",
+    delim = "|",
+    return.as = "code"
+  )
+
+  # Verify that the AWK field separator flag is updated to -F '|'
+  expect_match(res_code_delim, "awk -F '|'", fixed = TRUE)
+
+  res_code_delim <- pattern.fread(
+    the.files = tmp_file,
+    the.filter = "rating == 5",
+    delim = "|",
+    return.as = "code"
+  )
+})

@@ -6,7 +6,7 @@ combined.fread <- function(the.files, path.to.awk = NULL, the.variables = ".", i
 
 #' @import data.table
 #' @export
-filtered.fread <- function(the.files, path.to.awk = NULL, the.filter = NULL, the.variables = ".", include.filename = TRUE, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filter = NULL, the.variables = ".", include.filename = TRUE, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   require(data.table)
 
   lv.name <- "last.variable"
@@ -88,15 +88,15 @@ filtered.fread <- function(the.files, path.to.awk = NULL, the.filter = NULL, the
 
   if (use.windows) {
     string.placeholder <- '"%s"'
-    statement.to.fill <- '%s -F "," "FNR < 2 { next }{%s print %s%s}" %s'
+    statement.to.fill <- '%s -F "%s" "FNR < 2 { next }{%s print %s%s}" %s'
   } else {
     string.placeholder <- "'%s'"
-    statement.to.fill <- "%s -F ',' 'FNR < 2 { next }{%s print %s%s}' %s"
+    statement.to.fill <- "%s -F '%s' 'FNR < 2 { next }{%s print %s%s}' %s"
   }
 
   for (i in 1:num.batches) {
     pasted.file.names <- paste(sprintf(string.placeholder, the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]), collapse = " ")
-    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, awk.filter, column.names.awk, string.filename, pasted.file.names)
+    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, awk.filter, column.names.awk, string.filename, pasted.file.names)
 
 
     if (return.as != value.code) {
@@ -418,7 +418,7 @@ translate.nin.statement <- function(nin.statement, the.variables, nin.symbol = "
 }
 
 
-pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk = NULL, connectors = "or", the.variables = ".", include.filename = TRUE, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk = NULL, delim = ",", connectors = "or", the.variables = ".", include.filename = TRUE, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   require(data.table)
 
   and.symbols <- c("&", "&&", "and")
@@ -527,10 +527,10 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
 
   if (use.windows) {
     string.placeholder <- '"%s"'
-    statement.to.fill <- '%s -F "," "FNR < 2 { next } %s {print %s%s}" %s'
+    statement.to.fill <- '%s -F "%s" "FNR < 2 { next } %s {print %s%s}" %s'
   } else {
     string.placeholder <- "'%s'"
-    statement.to.fill <- "%s -F ',' 'FNR < 2 { next } %s {print %s%s}' %s"
+    statement.to.fill <- "%s -F '%s' 'FNR < 2 { next } %s {print %s%s}' %s"
   }
 
   if (is.null(path.to.awk)) {
@@ -540,7 +540,7 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
   for (i in 1:num.batches) {
     pasted.file.names <- paste(sprintf(string.placeholder, the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]), collapse = " ")
 
-    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, awk.pattern, column.names.awk, string.filename, pasted.file.names)
+    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, awk.pattern, column.names.awk, string.filename, pasted.file.names)
 
     if (return.as != value.code) {
       if (show.warnings == TRUE) {
