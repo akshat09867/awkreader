@@ -5,7 +5,6 @@ source("R/awkreader_v2.R")
 ## Constants
 
 all.files <- list.files(path = "Data/ratings data", full.names = T)
-tsv.file <- fread("/home/akshat/Downloads/archive/file.tsv")
 the.files <- all.files[1:2]
 
 path.to.awk <- NULL

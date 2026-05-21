@@ -21,16 +21,16 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
 
   total.files <- length(the.files)
 
-  header.statement <- sprintf("header.dt <- fread(input = '%s', nrows = 1)", the.files[1])
-  eval(expr = parse(text = header.statement))
-
-
-  all.variables <- names(get("header.dt"))
+  first_file_con <- file(the.files[1], "r")
+  header_line <- readLines(first_file_con, n = 1)
+  close(first_file_con)
+  all.variables <- unlist(strsplit(header_line, split = delim, fixed = TRUE))
+  all.variables <- gsub('^"|"$', "", all.variables)
 
   if (is.null(the.variables) | "." %in% the.variables) {
     the.variables <- all.variables
   }
-  if (sum(the.variables %in% names(header.dt)) == 0) {
+  if (sum(the.variables %in% all.variables) == 0) {
     stop("No variables in the data were specified.")
   }
 
@@ -109,7 +109,7 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
 
       if (nrow(batch.data) > 0) {
         if (include.filename == FALSE) {
-          names(batch.data) <- names(header.dt)[w]
+          names(batch.data) <- all.variables[w]
         }
         if (include.filename == TRUE) {
           nc <- ncol(batch.data)
@@ -124,7 +124,7 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
 
             batch.data[, (split.cols) := NULL]
           }
-          names(batch.data) <- c(names(header.dt)[w], file.header)
+          names(batch.data) <- c(all.variables[w], file.header)
         }
       }
       list.data[[i]] <- batch.data
@@ -442,19 +442,22 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
     stop("No existing files were found.")
   }
 
-  header.statement <- sprintf("header.dt <- fread(input = '%s', nrows = 1)", the.files[1])
-  eval(expr = parse(text = header.statement))
+  first_file_con <- file(the.files[1], "r")
+  header_line <- readLines(first_file_con, n = 1)
+  close(first_file_con)
+  all.variables <- unlist(strsplit(header_line, split = delim, fixed = TRUE))
+  all.variables <- gsub('^"|"$', "", all.variables)
 
   if (is.null(the.variables) | "." %in% the.variables) {
-    the.variables <- names(header.dt)
+    the.variables <- all.variables
   }
-  if (sum(the.variables %in% names(header.dt)) == 0) {
+  if (sum(the.variables %in% all.variables) == 0) {
     stop("No variables in the data were specified.  Double check that the names were spelled correctly.")
   }
 
   if (!is.null(drop)) {
     if (is.numeric(drop)) {
-      drop <- names(header.dt)[drop]
+      drop <- all.variables[drop]
     }
     the.variables <- the.variables[!(the.variables %in% drop)]
   }
@@ -469,7 +472,7 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
     num.files.per.batch <- 1000
   }
 
-  w <- which(names(header.dt) %in% the.variables)
+  w <- which(all.variables %in% the.variables)
 
   column.names.awk <- paste(sprintf("$%d", w), collapse = ",")
 
@@ -552,7 +555,7 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
 
       if (nrow(batch.data) > 0) {
         if (include.filename == FALSE) {
-          names(batch.data) <- names(header.dt)[w]
+          names(batch.data) <- all.variables[w]
         }
 
         if (include.filename == TRUE) {
@@ -568,7 +571,7 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
 
             batch.data[, (split.cols) := NULL]
           }
-          names(batch.data) <- c(names(header.dt)[w], file.header)
+          names(batch.data) <- c(all.variables[w], file.header)
         }
       }
       list.data[[i]] <- batch.data

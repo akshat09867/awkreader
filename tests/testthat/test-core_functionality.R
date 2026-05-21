@@ -187,3 +187,25 @@ test_that("filtered.fread correctly handles custom delimiters", {
     return.as = "code"
   )
 })
+
+# GROUP 8: Inline Header Optimization
+test_that("filtered.fread optimizes header parsing without losing column mappings", {
+  # Create a mock file where data positions matter
+  tmp_file1 <- tempfile(fileext = ".csv")
+  tmp_file2 <- tempfile(fileext = ".csv")
+  on.exit(unlink(c(tmp_file1, tmp_file2)))
+
+  writeLines(c("user,item,rating", "A,X,5"), tmp_file1)
+  writeLines(c("user,item,rating", "B,Y,2"), tmp_file2)
+
+  # Assert that multi-file evaluation correctly tracks headers using the optimized path
+  res_opt <- filtered.fread(
+    the.files = c(tmp_file1, tmp_file2),
+    the.filter = "rating == 5",
+    include.filename = FALSE
+  )
+
+  expect_equal(nrow(res_opt), 1)
+  expect_equal(res_opt$user, "A")
+  expect_equal(names(res_opt), c("user", "item", "rating"))
+})
