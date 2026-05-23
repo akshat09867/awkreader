@@ -6,6 +6,7 @@ source("R/awkreader_v2.R")
 
 all.files <- list.files(path = "Data/ratings data", full.names = T)
 the.files <- all.files[1:2]
+print(the.files)
 
 path.to.awk <- NULL
 the.filter <- NULL
@@ -115,7 +116,7 @@ print(head(r24))
 r25 <- filtered.fread(the.files = all.files, the.filter = "rating >= 4 & item == two.items[1]")
 print(head(r25))
 
-r26 <- filtered.fread(the.files = the.files, the.filter = "rating >= 4 & item %in% two.items", include.filename = T, num.files.per.batch = 1, show.warnings = F, return.as = "code")
+r26 <- filtered.fread(the.files = the.files, the.filter = "rating >= 4 & item %in% two.items", include.filename = T, num.files.per.batch = 1, show.warnings = F, return.as = "result")
 print(head(r26))
 
 ########## Testing pattern.fread
@@ -137,3 +138,10 @@ print(head(r31))
 
 r32 <- pattern.fread(the.files = "Data/Titanic.csv", the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = "and", file.header = "source_file")
 print(head(r32))
+
+
+r_count1 <- record_count(the.files = the.files, the.filter = "rating >= 4 & item %in% two.items", include.filename = F, num.files.per.batch = 1, show.warnings = F)
+print(r_count1)
+
+r_count2 <- record_count(the.files = the.files, the.filter = "rating == 3 | rating == 4", include.filename = T, return.as = "all")
+print(r_count2)
