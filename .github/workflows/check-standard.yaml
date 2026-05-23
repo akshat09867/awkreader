@@ -2,16 +2,14 @@ name: R-CMD-check
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
-
-permissions:
-  contents: read
+    branches: [main, master]
 
 jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
+
     name: ${{ matrix.config.os }} (${{ matrix.config.r }})
 
     strategy:
@@ -24,17 +22,12 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      GIT_TERMINAL_PROMPT: 0
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 1
-          persist-credentials: false
 
-      - name: Set up Pandoc
+      - name: Set up Pandoc (For Documentation/Vignettes)
         uses: r-lib/actions/setup-pandoc@v2
 
       - name: Set up R Environment
@@ -56,6 +49,6 @@ jobs:
             any::testthat
             any::data.table
 
-      - name: Run Test Suite
+      - name: Run Test Suite Only
         run: |
           Rscript -e "devtools::test()"
