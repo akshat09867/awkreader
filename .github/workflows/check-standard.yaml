@@ -10,6 +10,9 @@ jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
 
+    permissions:
+      contents: read
+
     name: ${{ matrix.config.os }} (${{ matrix.config.r }})
 
     strategy:
@@ -26,6 +29,9 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
       - name: Set up Pandoc (For Documentation/Vignettes)
         uses: r-lib/actions/setup-pandoc@v2

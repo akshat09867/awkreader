@@ -140,7 +140,7 @@ r32 <- pattern.fread(the.files = "Data/Titanic.csv", the.patterns = c("Female", 
 print(head(r32))
 
 
-r_count1 <- record_count(the.files = the.files, the.filter = "rating >= 4 & item %in% two.items", include.filename = F, num.files.per.batch = 1, show.warnings = F)
+r_count1 <- record_count(the.files = the.files, the.filter = "user > item & rating == 4", return.as = "all", include.filename = F)
 print(r_count1)
 
 r_count2 <- record_count(the.files = the.files, the.filter = "rating == 3 | rating == 4", include.filename = T, return.as = "all")
