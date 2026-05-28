@@ -6,7 +6,6 @@ source("R/awkreader_v2.R")
 
 all.files <- list.files(path = "Data/ratings data", full.names = T)
 the.files <- all.files[1:2]
-print(the.files)
 
 path.to.awk <- NULL
 the.filter <- NULL
@@ -30,7 +29,10 @@ drop <- NULL
 ## Variables for pattern.fread
 negations <- FALSE
 connectors <- "or"
+two.items <- c("1fg4sLgEFzAtOqCa", "6dXLifXK5LrvtdV1")
 
+print(length(the.files))
+print(the.files)
 ## Read in a combined data set from all of the files.  Note that this includes a column called file to provide the source of each row.
 r1 <- combined.fread(the.files = the.files)
 print(head(r1))
@@ -67,7 +69,7 @@ r10 <- filtered.fread(the.files = the.files, the.filter = "item == 'nJQPOMSy5GLv
 print(head(r10))
 # Demonstrates the & operator.
 # Note that the outside quotes should not match the inside quotes.
-r11 <- filtered.fread(the.files = the.files, the.filter = 'rating >= 3 & item == "0JFCjVx2P1RMzy3h"')
+r11 <- filtered.fread(the.files = the.files, the.filter = 'rating >= 3 & item == "0JFCjVx2P1RMzy3h"', return.as = "all")
 print(head(r11))
 
 # Demonstrates the | operator
@@ -81,7 +83,6 @@ print(head(r13))
 r14 <- filtered.fread(the.files = the.files, the.filter = 'rating == 5 & item %in% c("1fg4sLgEFzAtOqCa", "6dXLifXK5LrvtdV1")', return.as = "all")
 print(head(r14))
 # Pass filtering statements involving other variables defined in R.
-two.items <- c("1fg4sLgEFzAtOqCa", "6dXLifXK5LrvtdV1")
 r15 <- filtered.fread(the.files = the.files, the.filter = "rating >= 3 & item %in% two.items", return.as = "all")
 print(head(r15))
 # Demonstrates the %nin% operator
@@ -116,7 +117,7 @@ print(head(r24))
 r25 <- filtered.fread(the.files = all.files, the.filter = "rating >= 4 & item == two.items[1]")
 print(head(r25))
 
-r26 <- filtered.fread(the.files = the.files, the.filter = "rating >= 4 & item %in% two.items", include.filename = T, num.files.per.batch = 1, show.warnings = F, return.as = "result")
+r26 <- filtered.fread(the.files = the.files, the.filter = "rating >= 4 & item %in% two.items", include.filename = T, num.files.per.batch = 1, show.warnings = F, return.as = "code")
 print(head(r26))
 
 ########## Testing pattern.fread
@@ -133,15 +134,20 @@ print(head(r29))
 r30 <- pattern.fread(the.files = the.files, the.patterns = c("kT27T", "wBMJkot"), connectors = "and", return.as = "result")
 print(head(r30))
 
-r31 <- pattern.fread(the.files = all.files, the.patterns = c("8XKJD4", "0JFCj"), connectors = c("or"), include.filename = F, show.warnings = F)
-print(head(r31))
-
+r31 <- pattern.fread(the.files = the.files, the.patterns = c("8XKJD4", "0JFCj"), connectors = c("or"), include.filename = T, skip = 0, show.warnings = F)
+print(r31)
 r32 <- pattern.fread(the.files = "Data/Titanic.csv", the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = "and", file.header = "source_file")
 print(head(r32))
 
 
-r_count1 <- record_count(the.files = the.files, the.filter = "user > item & rating == 4", return.as = "all", include.filename = F)
+r_count1 <- record.count(the.files = the.files, the.filter = "user > item & rating == 4", return.as = "all", include.filename = F, skip = 0)
 print(r_count1)
 
-r_count2 <- record_count(the.files = the.files, the.filter = "rating == 3 | rating == 4", include.filename = T, return.as = "all")
+r_count2 <- record.count(the.files = the.files, the.filter = "rating == 3 | rating == 4", include.filename = T, return.as = "all")
 print(r_count2)
+
+# r_count3 <- record.count(the.files = c("diamonds.csv", "diamonds.csv"), the.filter = "price > 1000")
+# print(r_count3)
+
+# tt <- fread("diamonds.csv")
+# print(tt[price > 1000, .N])

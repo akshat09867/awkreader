@@ -1,15 +1,20 @@
 Package: awkreader
-Title: What the Package Does (One Line, Title Case)
+Title: File Reading with Pre-Filtering, Pattern Searching, and Distributed Files Using Awk
 Version: 0.0.0.9000
-Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
+Authors@R:
+    person("David", "Shilane", role = "aut", email = "david.shilane@columbia.edu"),
+    person("Akshat", "Maurya", role = c("aut", "cre"), email = "codingmaster902@gmail.com"),
+    person("Jason", "Livingston", role = "aut"),
+    person("Chung-Woo (Caffrey)", "Lee", role = "aut"),
+    person("Mayur", "Bansal", role = "aut"),
+    person("Srivastav", "Budugutta", role = "aut")
 Description: What the package does (one paragraph).
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
-Suggests: 
+Suggests:
     knitr,
     rmarkdown,
     testthat (>= 3.0.0)

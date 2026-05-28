@@ -1,12 +1,11 @@
 # Most inputs are the same as in filtered.fread()
-
-combined.fread <- function(the.files, path.to.awk = NULL, the.variables = ".", include.filename = TRUE, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+combined.fread <- function(the.files, path.to.awk = NULL, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   return(filtered.fread(the.files = the.files, path.to.awk = path.to.awk, the.filter = NULL, the.variables = the.variables, include.filename = include.filename, file.header = file.header, num.files.per.batch = num.files.per.batch, return.as = return.as, envir = envir, show.warnings = show.warnings, return.data.table = return.data.table, nrows = nrows, drop = drop))
 }
 
 #' @import data.table
 #' @export
-filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filter = NULL, the.variables = ".", include.filename = TRUE, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filter = NULL, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   require(data.table)
 
   lv.name <- "last.variable"
@@ -22,11 +21,13 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
   total.files <- length(the.files)
 
   first_file_con <- file(the.files[1], "r")
+  if (skip > 0) {
+    readLines(first_file_con, n = skip)
+  }
   header_line <- readLines(first_file_con, n = 1)
   close(first_file_con)
   all.variables <- unlist(strsplit(header_line, split = delim, fixed = TRUE))
   all.variables <- gsub('^"|"$', "", all.variables)
-
   if (is.null(the.variables) | "." %in% the.variables) {
     the.variables <- all.variables
   }
@@ -85,20 +86,18 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
   use.windows <- grepl("cmd.exe", tolower(shell.type), fixed = TRUE)
 
   awk.filter <- translate.filtering.statement(the.filter = the.filter, the.variables = all.variables, envir = envir, and.symbol = and.symbol, or.symbol = or.symbol, in.symbol = in.symbol, nin.symbol = nin.symbol, use.windows = use.windows)
-
+  skip.limit <- skip + 1
   if (use.windows) {
     string.placeholder <- '"%s"'
-    statement.to.fill <- '%s -F "%s" "FNR < 2 { next }{%s print %s%s}" %s'
+    statement.to.fill <- '%s -F "%s" -v OFS="," "FNR <= %s { next }{%s print %s%s}" %s'
   } else {
     string.placeholder <- "'%s'"
-    statement.to.fill <- "%s -F '%s' 'FNR < 2 { next }{%s print %s%s}' %s"
+    statement.to.fill <- "%s -F '%s' -v OFS=',' 'FNR <= %s { next }{%s print %s%s}' %s"
   }
 
   for (i in 1:num.batches) {
     pasted.file.names <- paste(sprintf(string.placeholder, the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]), collapse = " ")
-    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, awk.filter, column.names.awk, string.filename, pasted.file.names)
-
-
+    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, skip.limit, awk.filter, column.names.awk, string.filename, pasted.file.names)
     if (return.as != value.code) {
       if (show.warnings == TRUE) {
         batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows)
@@ -265,10 +264,10 @@ translate.logical.statement <- function(the.statement, the.variables, envir = .G
     }
   }
 
-  if (is.character(ending.values) | is.factor(ending.values)) {
+  is.math.function <- grepl(pattern = "^(log|mean|min|max|sum|exp|sqrt|abs|round)\\s*\\(", x = ending.values[2], ignore.case = TRUE)
+  if ((is.character(ending.values) | is.factor(ending.values)) & !is.math.function) {
     ending.values <- sprintf("'%s'", ending.values)
   }
-
   if (length(ending.values) == 2) {
     res <- trimws(sprintf("%s %s %s", trimws(ending.values[1]), trimws(the.symbol), trimws(ending.values[2])))
   }
@@ -418,7 +417,7 @@ translate.nin.statement <- function(nin.statement, the.variables, nin.symbol = "
 }
 
 
-pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk = NULL, delim = ",", connectors = "or", the.variables = ".", include.filename = TRUE, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk = NULL, delim = ",", connectors = "or", the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   require(data.table)
 
   and.symbols <- c("&", "&&", "and")
@@ -443,6 +442,9 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
   }
 
   first_file_con <- file(the.files[1], "r")
+  if (skip > 0) {
+    readLines(first_file_con, n = skip)
+  }
   header_line <- readLines(first_file_con, n = 1)
   close(first_file_con)
   all.variables <- unlist(strsplit(header_line, split = delim, fixed = TRUE))
@@ -527,13 +529,13 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
   } else {
     use.windows <- FALSE
   }
-
+  skip.limit <- skip + 1
   if (use.windows) {
     string.placeholder <- '"%s"'
-    statement.to.fill <- '%s -F "%s" "FNR < 2 { next } %s {print %s%s}" %s'
+    statement.to.fill <- '%s -F "%s" -v OFS="," "FNR <=%s { next } %s {print %s%s}" %s'
   } else {
     string.placeholder <- "'%s'"
-    statement.to.fill <- "%s -F '%s' 'FNR < 2 { next } %s {print %s%s}' %s"
+    statement.to.fill <- "%s -F '%s' -v OFS=',' 'FNR <= %s { next } %s {print %s%s}' %s"
   }
 
   if (is.null(path.to.awk)) {
@@ -543,35 +545,21 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
   for (i in 1:num.batches) {
     pasted.file.names <- paste(sprintf(string.placeholder, the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]), collapse = " ")
 
-    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, awk.pattern, column.names.awk, string.filename, pasted.file.names)
+    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, skip.limit, awk.pattern, column.names.awk, string.filename, pasted.file.names)
 
     if (return.as != value.code) {
       if (show.warnings == TRUE) {
-        batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows)
+        batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ",")
       }
       if (show.warnings != TRUE) {
-        suppressWarnings(batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows))
+        suppressWarnings(batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ","))
       }
 
       if (nrow(batch.data) > 0) {
-        if (include.filename == FALSE) {
-          names(batch.data) <- all.variables[w]
-        }
-
-        if (include.filename == TRUE) {
-          nc <- ncol(batch.data)
-          nv <- length(w)
-          if (nc > 1 + nv) {
-            split.cols <- names(batch.data)[(nv + 1):nc]
-            batch.data[, eval(lv.name) := get(split.cols[1])]
-
-            for (j in 2:(nc - nv)) {
-              batch.data[, eval(lv.name) := sprintf("%s %s", get(lv.name), get(split.cols[j]))]
-            }
-
-            batch.data[, (split.cols) := NULL]
-          }
-          names(batch.data) <- c(all.variables[w], file.header)
+        if (!include.filename) {
+          setnames(batch.data, all.variables[w])
+        } else {
+          setnames(batch.data, c(all.variables[w], file.header))
         }
       }
       list.data[[i]] <- batch.data
@@ -603,13 +591,14 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
 
 #' @import data.table
 #' @export
-record_count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter = NULL,
-                         the.variables = ".", include.filename = TRUE, file.header = "file",
+record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter = NULL,
+                         the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file",
                          num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv,
                          and.symbol = "&", or.symbol = "|", in.symbol = "%in%",
                          nin.symbol = "%nin%", show.warnings = FALSE, nrows = Inf, drop = NULL, ...) {
-  require(data.table)
-
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Package 'data.table' is required but not installed.")
+  }
   the.files <- the.files[file.exists(the.files)]
   total.files <- length(the.files)
 
@@ -628,6 +617,9 @@ record_count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   use.windows <- grepl("cmd.exe", tolower(shell.type), fixed = TRUE)
 
   first_file_con <- file(the.files[1], "r")
+  if (skip > 0) {
+    readLines(first_file_con, n = skip)
+  }
   header_line <- readLines(first_file_con, n = 1)
   close(first_file_con)
 
@@ -644,13 +636,13 @@ record_count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   } else {
     awk.action <- sprintf("{%s {count++}} ", awk.filter[[1]][1])
   }
-
+  skip.limit <- skip + 1
   if (use.windows) {
     string.placeholder <- '"%s"'
-    statement.to.fill <- '%s -F "%s" -v OFS="," "FNR==1 && NR>1 {print prev_file, count; count=0} FNR==1 {prev_file=FILENAME; next} %s END {if(prev_file) print prev_file, count}" %s'
+    statement.to.fill <- '%s -F "%s" -v OFS="," "FNR==1 && NR>1 {print prev_file, count+0; count=0} FNR==1 {prev_file=FILENAME} FNR<=%s {next} %s END {if(prev_file) print prev_file, count}" %s'
   } else {
     string.placeholder <- "'%s'"
-    statement.to.fill <- "%s -F '%s' -v OFS=',' 'FNR==1 && NR>1 {print prev_file, count; count=0} FNR==1 {prev_file=FILENAME; next} %s END {if(prev_file) print prev_file, count}' %s"
+    statement.to.fill <- "%s -F '%s' -v OFS=',' 'FNR==1 && NR>1 {print prev_file, count+0; count=0} FNR==1 {prev_file=FILENAME} FNR<=%s {next} %s  END {if(prev_file) print prev_file, count}' %s"
   }
 
   num.batches <- ceiling(total.files / num.files.per.batch)
@@ -665,7 +657,7 @@ record_count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
     file_subset <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
     pasted.file.names <- paste(sprintf(string.placeholder, file_subset), collapse = " ")
 
-    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, awk.action, pasted.file.names)
+    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, skip.limit, awk.action, pasted.file.names)
 
     if (return.as != "code") {
       if (show.warnings) {

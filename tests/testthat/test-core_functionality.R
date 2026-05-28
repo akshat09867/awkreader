@@ -18,9 +18,9 @@ test_that("Basic combined reads and return types work correctly", {
   expect_true("file" %in% names(res_comb))
 
   # r2: return.as = "code" with NULL filter
-  res_code <- filtered.fread(the.files = the.files, the.filter = NULL, return.as = "code")
+  res_code <- filtered.fread(the.files = the.files, the.filter = NULL, skip = 0, return.as = "code")
   expect_type(res_code, "character")
-  expect_match(res_code, "FNR < 2 { next }{ print $1,$2,$3,FILENAME}", fixed = TRUE)
+  expect_match(res_code, "FNR <= 1 { next }{ print $1,$2,$3,FILENAME}", fixed = TRUE)
 
   # r3: nrows limit
   res_nrows <- filtered.fread(the.files = the.files, nrows = 10)
@@ -64,7 +64,7 @@ test_that("AWK translation accurately parses logical operators and math", {
   # r11: AND operator (&)
   res_and <- filtered.fread(the.files = the.files, the.filter = "rating >= 3 & item == '0JFCjVx2P1RMzy3h'")
   expect_gt(nrow(res_and), 0)
-  expect_true(all(as.numeric(res_and$rating) >= 3 & res_and$item == "0JFCjVx2P1RMzy3h"))
+  expect_true(all(res_and$rating >= 3 & res_and$item == "0JFCjVx2P1RMzy3h"))
 
   # r12: OR operator (|)
   res_or <- filtered.fread(the.files = the.files, the.filter = "rating == 3 | rating == 4")
@@ -78,7 +78,7 @@ test_that("AWK translation accurately parses logical operators and math", {
 
   # r22: Math functions (log)
   res_math <- filtered.fread(the.files = the.files, the.filter = "item == 'sFFbD3fA0Jsvs7Ic' & rating > log(rating)", return.as = "all")
-  expect_match(res_math$code, "log\\(", fixed = FALSE)
+  expect_equal(res_math$code, "awk -F ',' -v OFS=',' 'FNR <= 1 { next }{if($2 == \"sFFbD3fA0Jsvs7Ic\" && $3 > log($3)) print $1,$2,$3,FILENAME}' '../../Data/ratings data/file_1.csv' '../../Data/ratings data/file_10.csv'")
 })
 
 # GROUP 4: Environment Variables and Set Operators (r14 - r16, r25)
