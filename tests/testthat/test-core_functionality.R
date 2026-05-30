@@ -209,3 +209,55 @@ test_that("filtered.fread optimizes header parsing without losing column mapping
   expect_equal(res_opt$user, "A")
   expect_equal(names(res_opt), c("user", "item", "rating"))
 })
+
+
+test_that("record.count accurately processes numeric and string pattern skip parameters", {
+  # 1. Create temporary sample data file containing metadata rows
+  tmp_file <- tempfile(fileext = ".csv")
+
+  sample_content <- c(
+    "# Report Generated: 2026-05-29",
+    "# Source: Academic Records Department System",
+    "id,major,hw1,hw2,quiz",
+    "Student_1,Statistics,87,90,94",
+    "Student_2,Psychology,93,91,96",
+    "Student_3,Mathematics,91,86,89",
+    "Student_4,Statistics,88,85,90"
+  )
+  writeLines(sample_content, tmp_file)
+
+  # Ensure the cleanup runs when the test block finishes
+  on.exit(unlink(tmp_file))
+
+  f1 <- filtered.fread(the.files = tmp_file, the.filter = "hw1 > 90", include.filename = F, skip = "quiz")
+  expect_equal(nrow(f1), 2)
+  f2 <- filtered.fread(the.files = tmp_file, the.filter = "hw1 > 90", include.filename = F, skip = 2)
+  expect_equal(nrow(f2), 2)
+
+  # Numeric Skip Setup (skip = 2)
+  res_numeric <- record.count(the.files = tmp_file, skip = 2, include.filename = FALSE)
+
+  expect_s3_class(res_numeric, "data.table")
+  expect_equal(res_numeric$count, 4)
+
+  # Character Pattern Skip Setup (skip = "id")
+  res_string <- record.count(the.files = tmp_file, skip = "id", include.filename = FALSE)
+
+  expect_equal(res_string$count, 4)
+
+  # Test Case C: Filter Execution Combined with Numeric Skip
+  res_filtered <- record.count(
+    the.files = tmp_file,
+    skip = 2,
+    the.filter = "major == 'Statistics'",
+    include.filename = FALSE
+  )
+
+  expect_equal(res_filtered$count, 2)
+
+  # Invalid String Pattern Exception Throwing
+  expect_error(
+    record.count(the.files = tmp_file, skip = "non_existent_column_pattern"),
+    "was not found in the file"
+  )
+})

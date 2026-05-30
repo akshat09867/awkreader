@@ -31,8 +31,6 @@ negations <- FALSE
 connectors <- "or"
 two.items <- c("1fg4sLgEFzAtOqCa", "6dXLifXK5LrvtdV1")
 
-print(length(the.files))
-print(the.files)
 ## Read in a combined data set from all of the files.  Note that this includes a column called file to provide the source of each row.
 r1 <- combined.fread(the.files = the.files)
 print(head(r1))
@@ -83,7 +81,7 @@ print(head(r13))
 r14 <- filtered.fread(the.files = the.files, the.filter = 'rating == 5 & item %in% c("1fg4sLgEFzAtOqCa", "6dXLifXK5LrvtdV1")', return.as = "all")
 print(head(r14))
 # Pass filtering statements involving other variables defined in R.
-r15 <- filtered.fread(the.files = the.files, the.filter = "rating >= 3 & item %in% two.items", return.as = "all")
+r15 <- filtered.fread(the.files = the.files, the.filter = "rating > 4 & item %in% two.items", return.as = "all")
 print(head(r15))
 # Demonstrates the %nin% operator
 r16 <- filtered.fread(the.files = the.files, the.filter = "rating %nin% c(1:2, 4)", return.as = "all", include.filename = F)
@@ -110,7 +108,7 @@ print(head(r23))
 
 # Read the data in batches of size 100 and then combine.  Note that the batches are only required if the length of the AWK coding statement is too long.  Note that show.warnings = F will use suppressWarnings() to remove warning statements.  Any batch of files with no cases matching the.filter's inclusion criteria would otherwise generate a warning message.
 
-r24 <- filtered.fread(the.files = all.files, the.filter = "rating >= 4 & item %in% two.items", include.filename = T, num.files.per.batch = 100, show.warnings = F)
+r24 <- filtered.fread(the.files = the.files, the.filter = "rating >= 1 & item %in% two.items", include.filename = T, num.files.per.batch = 100, show.warnings = F, return.as = "all")
 print(head(r24))
 
 # Note that these are using variables in R to define the.filter.  The program will locate these variables and translate to their values (e.g. "6opmPfANUHJH121e") for using in reading and filtering the data.
@@ -120,9 +118,10 @@ print(head(r25))
 r26 <- filtered.fread(the.files = the.files, the.filter = "rating >= 4 & item %in% two.items", include.filename = T, num.files.per.batch = 1, show.warnings = F, return.as = "code")
 print(head(r26))
 
-########## Testing pattern.fread
 
-## Matching any row with a pattern
+######## Testing pattern.fread
+
+# Matching any row with a pattern
 
 r27 <- pattern.fread(the.files = the.files, the.patterns = c("5PQIOK"))
 print(head(r27))
@@ -146,8 +145,16 @@ print(r_count1)
 r_count2 <- record.count(the.files = the.files, the.filter = "rating == 3 | rating == 4", include.filename = T, return.as = "all")
 print(r_count2)
 
-# r_count3 <- record.count(the.files = c("diamonds.csv", "diamonds.csv"), the.filter = "price > 1000")
-# print(r_count3)
+r_count3 <- record.count(the.files = c("diamonds.csv", "diamonds.csv"), the.filter = "price > 1000 & color %in% c('E', 'F')")
+print(r_count3)
 
-# tt <- fread("diamonds.csv")
-# print(tt[price > 1000, .N])
+tt <- fread("diamonds.csv")
+print(tt[price > 1000 & color %in% c("E", "F"), .N])
+
+
+# Diamonds
+d1 <- filtered.fread(the.files = "~/Downloads/diamonds.csv", the.filter = "price > 1000 & color %in% c('E', 'F')")[(.N - 1):.N, ]
+print(d1)
+
+d2 <- filtered.fread(the.files = "diamonds.csv", the.filter = "price >= 1000 & color %in% c('E', 'F')")
+print(d2[, .N])

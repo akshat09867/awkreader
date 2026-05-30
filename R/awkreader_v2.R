@@ -6,7 +6,9 @@ combined.fread <- function(the.files, path.to.awk = NULL, the.variables = ".", i
 #' @import data.table
 #' @export
 filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filter = NULL, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
-  require(data.table)
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Package 'data.table' is required but not installed.")
+  }
 
   lv.name <- "last.variable"
   value.code <- "code"
@@ -15,11 +17,20 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
   if (!is.logical(return.data.table)) {
     return.data.table <- TRUE
   }
-
+  the.files <- path.expand(the.files)
   the.files <- the.files[file.exists(the.files)]
 
   total.files <- length(the.files)
 
+  if (is.character(skip)) {
+    preview_lines <- readLines(the.files[1], n = 100, warn = FALSE)
+    match_index <- which(grepl(skip, preview_lines))[1]
+
+    if (is.na(match_index)) {
+      stop(sprintf("The skip pattern '%s' was not found in the file.", skip))
+    }
+    skip <- match_index - 1
+  }
   first_file_con <- file(the.files[1], "r")
   if (skip > 0) {
     readLines(first_file_con, n = skip)
@@ -100,30 +111,17 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
     awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, skip.limit, awk.filter, column.names.awk, string.filename, pasted.file.names)
     if (return.as != value.code) {
       if (show.warnings == TRUE) {
-        batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows)
+        batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ",")
       }
       if (show.warnings != TRUE) {
-        suppressWarnings(batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows))
+        suppressWarnings(batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ","))
       }
 
       if (nrow(batch.data) > 0) {
-        if (include.filename == FALSE) {
-          names(batch.data) <- all.variables[w]
-        }
-        if (include.filename == TRUE) {
-          nc <- ncol(batch.data)
-          nv <- length(w)
-          if (nc > 1 + nv) {
-            split.cols <- names(batch.data)[(nv + 1):nc]
-            batch.data[, eval(lv.name) := get(split.cols[1])]
-
-            for (j in 2:(nc - nv)) {
-              batch.data[, eval(lv.name) := sprintf("%s %s", get(lv.name), get(split.cols[j]))]
-            }
-
-            batch.data[, (split.cols) := NULL]
-          }
-          names(batch.data) <- c(all.variables[w], file.header)
+        if (!include.filename) {
+          setnames(batch.data, all.variables[w])
+        } else {
+          setnames(batch.data, c(all.variables[w], file.header))
         }
       }
       list.data[[i]] <- batch.data
@@ -264,10 +262,11 @@ translate.logical.statement <- function(the.statement, the.variables, envir = .G
     }
   }
 
-  is.math.function <- grepl(pattern = "^(log|mean|min|max|sum|exp|sqrt|abs|round)\\s*\\(", x = ending.values[2], ignore.case = TRUE)
-  if ((is.character(ending.values) | is.factor(ending.values)) & !is.math.function) {
-    ending.values <- sprintf("'%s'", ending.values)
-  }
+  is.math.function <- grepl(pattern = "^(log|mean|min|max|sum|exp|sqrt|abs|round)\\s*\\(", x = ending.values, ignore.case = TRUE)
+  is.numeric.string <- !is.na(suppressWarnings(as.numeric(ending.values)))
+  to_quote <- (is.character(ending.values) | is.factor(ending.values)) & !is.math.function & !is.numeric.string
+  ending.values[to_quote] <- sprintf("'%s'", ending.values[to_quote])
+
   if (length(ending.values) == 2) {
     res <- trimws(sprintf("%s %s %s", trimws(ending.values[1]), trimws(the.symbol), trimws(ending.values[2])))
   }
@@ -418,7 +417,9 @@ translate.nin.statement <- function(nin.statement, the.variables, nin.symbol = "
 
 
 pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk = NULL, delim = ",", connectors = "or", the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
-  require(data.table)
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Package 'data.table' is required but not installed.")
+  }
 
   and.symbols <- c("&", "&&", "and")
   or.symbols <- c("|", "||", "or")
@@ -440,7 +441,15 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
   if (total.files == 0) {
     stop("No existing files were found.")
   }
+  if (is.character(skip)) {
+    preview_lines <- readLines(the.files[1], n = 100, warn = FALSE)
+    match_index <- which(grepl(skip, preview_lines))[1]
 
+    if (is.na(match_index)) {
+      stop(sprintf("The skip pattern '%s' was not found in the file.", skip))
+    }
+    skip <- match_index - 1
+  }
   first_file_con <- file(the.files[1], "r")
   if (skip > 0) {
     readLines(first_file_con, n = skip)
@@ -615,7 +624,15 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
     shell.type <- Sys.getenv("COMSPEC")
   }
   use.windows <- grepl("cmd.exe", tolower(shell.type), fixed = TRUE)
+  if (is.character(skip)) {
+    preview_lines <- readLines(the.files[1], n = 100, warn = FALSE)
+    match_index <- which(grepl(skip, preview_lines))[1]
 
+    if (is.na(match_index)) {
+      stop(sprintf("The skip pattern '%s' was not found in the file.", skip))
+    }
+    skip <- match_index - 1
+  }
   first_file_con <- file(the.files[1], "r")
   if (skip > 0) {
     readLines(first_file_con, n = skip)
