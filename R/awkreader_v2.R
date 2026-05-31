@@ -151,7 +151,6 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
   return(res)
 }
 
-
 translate.filtering.statement <- function(the.filter, the.variables, envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", equation.symbols = c(">=", ">", "<=", "<", "!=", "=="), use.windows = FALSE) {
   if (is.null(the.filter)) {
     return("")

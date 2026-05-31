@@ -153,8 +153,11 @@ print(tt[price > 1000 & color %in% c("E", "F"), .N])
 
 
 # Diamonds
-d1 <- filtered.fread(the.files = "~/Downloads/diamonds.csv", the.filter = "price > 1000 & color %in% c('E', 'F')")[(.N - 1):.N, ]
+d1 <- filtered.fread(the.files = "diamonds.csv", the.filter = "price > 1000 & color %in% c('E', 'F')")[(.N - 1):.N, ]
 print(d1)
 
 d2 <- filtered.fread(the.files = "diamonds.csv", the.filter = "price >= 1000 & color %in% c('E', 'F')")
 print(d2[, .N])
+
+tt <- fread("diamonds.csv")
+print(tt[price >= 1000 & color %in% c("E", "F"), .N])
