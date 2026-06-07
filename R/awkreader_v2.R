@@ -21,23 +21,42 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
   the.files <- the.files[file.exists(the.files)]
 
   total.files <- length(the.files)
+  metadata.skip <- 0
+  data.skip <- 0
+  if (is.list(skip)) {
+    if (!is.null(skip$skip.data.rows)) {
+      data.skip <- skip$skip.data.rows
+    }
+    if (!is.null(skip$skip.metadata.rows)) {
+      metadata.skip <- skip$skip.metadata.rows
+      if (is.character(metadata.skip)) {
+        preview.lines <- readLines(the.files[1], n = 100, warn = FALSE)
+        match.index <- which(grepl(metadata.skip, preview.lines))[1]
 
-  if (is.character(skip)) {
-    preview_lines <- readLines(the.files[1], n = 100, warn = FALSE)
-    match_index <- which(grepl(skip, preview_lines))[1]
+        if (is.na(match.index)) {
+          stop(sprintf("The skip pattern '%s' was not found in the file.", metadata.skip))
+        }
+        metadata.skip <- match.index - 1
+      }
+    }
+  } else if (is.character(skip)) {
+    preview.lines <- readLines(the.files[1], n = 100, warn = FALSE)
+    match.index <- which(grepl(skip, preview.lines))[1]
 
-    if (is.na(match_index)) {
+    if (is.na(match.index)) {
       stop(sprintf("The skip pattern '%s' was not found in the file.", skip))
     }
-    skip <- match_index - 1
+    metadata.skip <- match.index - 1
+  } else if (is.numeric(skip)) {
+    metadata.skip <- skip
   }
-  first_file_con <- file(the.files[1], "r")
-  if (skip > 0) {
-    readLines(first_file_con, n = skip)
+  first.file.con <- file(the.files[1], "r")
+  if (metadata.skip > 0) {
+    readLines(first.file.con, n = metadata.skip)
   }
-  header_line <- readLines(first_file_con, n = 1)
-  close(first_file_con)
-  all.variables <- unlist(strsplit(header_line, split = delim, fixed = TRUE))
+  header.line <- readLines(first.file.con, n = 1)
+  close(first.file.con)
+  all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
   all.variables <- gsub('^"|"$', "", all.variables)
   if (is.null(the.variables) | "." %in% the.variables) {
     the.variables <- all.variables
@@ -65,7 +84,6 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
   }
 
   w <- which(all.variables %in% the.variables)
-
   column.names.awk <- paste(sprintf("$%d", w), collapse = ",")
 
 
@@ -89,7 +107,7 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
 
   # Using Windows double-quoting if shell uses cmd.exe, else using single-quoting
   # OS = sessionInfo()$running  #To see the OS, but currently looking for the CMD.EXE executable in shell.type
-  shell.type <- Sys.getenv("R_SHELL")
+  shell.type <- Sys.getenv("R.SHELL")
   if (!nzchar(shell.type)) {
     shell.type <- Sys.getenv("COMSPEC")
   }
@@ -97,7 +115,7 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
   use.windows <- grepl("cmd.exe", tolower(shell.type), fixed = TRUE)
 
   awk.filter <- translate.filtering.statement(the.filter = the.filter, the.variables = all.variables, envir = envir, and.symbol = and.symbol, or.symbol = or.symbol, in.symbol = in.symbol, nin.symbol = nin.symbol, use.windows = use.windows)
-  skip.limit <- skip + 1
+  skip.limit <- metadata.skip + 1 + data.skip
   if (use.windows) {
     string.placeholder <- '"%s"'
     statement.to.fill <- '%s -F "%s" -v OFS="," "FNR <= %s { next }{%s print %s%s}" %s'
@@ -105,7 +123,6 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
     string.placeholder <- "'%s'"
     statement.to.fill <- "%s -F '%s' -v OFS=',' 'FNR <= %s { next }{%s print %s%s}' %s"
   }
-
   for (i in 1:num.batches) {
     pasted.file.names <- paste(sprintf(string.placeholder, the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]), collapse = " ")
     awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, skip.limit, awk.filter, column.names.awk, string.filename, pasted.file.names)
@@ -133,13 +150,12 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
   }
   if (return.as != value.code) {
     the.result <- rbindlist(l = list.data, fill = T)
-    if (return.data.table == FALSE) {
-      setDF(the.result)
-    }
     if (nrows < nrow(the.result)) {
       the.result <- the.result[1:nrows, ]
     }
-
+    if (return.data.table == FALSE) {
+      setDF(the.result)
+    }
     if (return.as == value.all) {
       res <- list(result = the.result, code = awk.statements)
     }
@@ -237,9 +253,11 @@ translate.filtering.statement <- function(the.filter, the.variables, envir = .Gl
 
   return(full.translation)
 }
+
 translate.logical.statement <- function(the.statement, the.variables, envir = .GlobalEnv) {
   equation.symbols <- c(">=", "<=", "!=", "==", ">", "<")
   two.sides <- FALSE
+
   for (i in 1:length(equation.symbols)) {
     equation.pieces <- trimws(strsplit(x = the.statement, split = equation.symbols[i], fixed = TRUE)[[1]])
 
@@ -250,82 +268,60 @@ translate.logical.statement <- function(the.statement, the.variables, envir = .G
     }
   }
 
+  if (!two.sides) {
+    return(the.statement)
+  }
+
   ending.values <- equation.pieces
 
   for (i in 1:length(equation.pieces)) {
-    exists.in.envir <- tryCatch(expr = !is.null(eval(parse(text = trimws(equation.pieces[i])))), error = function(e) {
-      is.null(e)
-    }, finally = "hello")
-    if (exists.in.envir == TRUE) {
-      ending.values[i] <- eval(expr = parse(text = trimws(equation.pieces[i])), envir = envir)
+    contains.column <- FALSE
+    for (var in the.variables) {
+      escaped.var <- gsub("([][\\\\.|(){}^$+*?-])", "\\\\\\1", var)
+      if (grepl(pattern = paste0("\\b", escaped.var, "\\b"), x = equation.pieces[i])) {
+        contains.column <- TRUE
+        break
+      }
+    }
+
+    if (!contains.column) {
+      exists.in.envir <- tryCatch(
+        expr = {
+          parsed.expr <- parse(text = trimws(equation.pieces[i]))
+          !is.null(eval(parsed.expr, envir = envir))
+        },
+        error = function(e) FALSE
+      )
+
+      if (exists.in.envir) {
+        ending.values[i] <- eval(expr = parse(text = trimws(equation.pieces[i])), envir = envir)
+      }
     }
   }
 
   is.math.function <- grepl(pattern = "^(log|mean|min|max|sum|exp|sqrt|abs|round)\\s*\\(", x = ending.values, ignore.case = TRUE)
   is.numeric.string <- !is.na(suppressWarnings(as.numeric(ending.values)))
-  to_quote <- (is.character(ending.values) | is.factor(ending.values)) & !is.math.function & !is.numeric.string
-  ending.values[to_quote] <- sprintf("'%s'", ending.values[to_quote])
+  to.quote <- (is.character(ending.values) | is.factor(ending.values)) & !is.math.function & !is.numeric.string
 
-  if (length(ending.values) == 2) {
-    res <- trimws(sprintf("%s %s %s", trimws(ending.values[1]), trimws(the.symbol), trimws(ending.values[2])))
-  }
+  ending.values[to.quote] <- sprintf('"%s"', ending.values[to.quote])
 
-
+  res <- trimws(sprintf("%s %s %s", trimws(ending.values[1]), trimws(the.symbol), trimws(ending.values[2])))
   split.pieces <- trimws(strsplit(res, trimws(the.symbol))[[1]])
 
   for (u in 1:length(split.pieces)) {
     for (v in 1:length(the.variables)) {
-      split.pieces[u] <- gsub(pattern = the.variables[v], replacement = sprintf("$%d", v), x = split.pieces[u])
+      escaped.var <- gsub("([][\\\\.|(){}^$+*?-])", "\\\\\\1", the.variables[v])
+      split.pieces[u] <- gsub(pattern = paste0("\\b", escaped.var, "\\b"), replacement = sprintf("$%d", v), x = split.pieces[u])
     }
   }
 
-  w <- which(split.pieces %in% sprintf("'$%s'", 1:length(the.variables)))
-  split.pieces[w] <- gsub(pattern = "'", replacement = "", x = split.pieces[w])
+  w <- which(split.pieces %in% sprintf('"$%s"', 1:length(the.variables)) | split.pieces %in% sprintf("'$%s'", 1:length(the.variables)))
+  if (length(w) > 0) {
+    split.pieces[w] <- gsub(pattern = "['\"]", replacement = "", x = split.pieces[w])
+  }
 
   res <- trimws(paste(split.pieces, collapse = sprintf(" %s ", trimws(the.symbol))))
-
   return(res)
-}
-
-translate.in.statement.global <- function(in.statement, the.variables, in.symbol = "%in%", envir = .GlobalEnv) {
-  all.characters <- strsplit(x = trimws(x = in.statement), split = "")[[1]]
-
-  num.characters <- length(all.characters)
-  num.leading.parens <- min(which(all.characters != "(")) - 1
-  num.trailing.parens <- min(which(all.characters[num.characters:1] != ")")) - 1
-
-  reduced.statement <- substring(text = trimws(x = in.statement), first = num.leading.parens + 1, last = num.characters - num.trailing.parens)
-
-  the.pieces <- trimws(x = strsplit(x = reduced.statement, split = in.symbol)[[1]], which = "both")
-
-  the.pieces <- gsub(pattern = "\'", replacement = "'", x = the.pieces, fixed = T)
-  the.pieces <- gsub(pattern = '\"', replacement = "'", x = the.pieces, fixed = T)
-
-  chars.the.pieces <- strsplit(x = the.pieces, split = "")
-
-  chars.leading.parens <- lapply(X = chars.the.pieces, FUN = function(x) {
-    sum(x == "(")
-  })
-
-  chars.trailing.parens <- lapply(X = chars.the.pieces, FUN = function(x) {
-    sum(x == ")")
-  })
-
-  parens <- data.frame(leading = as.numeric(chars.leading.parens), trailing = as.numeric(chars.trailing.parens))
-
-  for (i in 1:nrow(parens)) {
-    if (parens$trailing[i] < parens$leading[i]) {
-      the.pieces[[i]] <- sprintf("%s%s", trimws(the.pieces[[i]]), rep.int(x = ")", times = parens$leading[i] - parens$trailing[i]))
-    }
-  }
-
-  rhs.values <- eval(expr = parse(text = the.pieces[2]), envir = envir)
-
-  main.translation <- paste(sprintf("%s == '%s'", the.pieces[1], rhs.values), collapse = " || ")
-
-  translated.statement <- sprintf("(%s)", main.translation)
-
-  return(translated.statement)
 }
 
 translate.in.statement <- function(in.statement, the.variables, nin.symbol = "%nin%", in.symbol = "%in%", envir = .GlobalEnv) {
@@ -414,7 +410,6 @@ translate.nin.statement <- function(nin.statement, the.variables, nin.symbol = "
   return(res)
 }
 
-
 pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk = NULL, delim = ",", connectors = "or", the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
@@ -432,7 +427,7 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
   if (!is.logical(return.data.table)) {
     return.data.table <- TRUE
   }
-
+  the.files <- path.expand(the.files)
   the.files <- the.files[file.exists(the.files)]
 
   total.files <- length(the.files)
@@ -440,22 +435,42 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
   if (total.files == 0) {
     stop("No existing files were found.")
   }
-  if (is.character(skip)) {
-    preview_lines <- readLines(the.files[1], n = 100, warn = FALSE)
-    match_index <- which(grepl(skip, preview_lines))[1]
+  metadata.skip <- 0
+  data.skip <- 0
+  if (is.list(skip)) {
+    if (!is.null(skip$skip.data.rows)) {
+      data.skip <- skip$skip.data.rows
+    }
+    if (!is.null(skip$skip.metadata.rows)) {
+      metadata.skip <- skip$skip.metadata.rows
+      if (is.character(metadata.skip)) {
+        preview.lines <- readLines(the.files[1], n = 100, warn = FALSE)
+        match.index <- which(grepl(metadata.skip, preview.lines))[1]
 
-    if (is.na(match_index)) {
+        if (is.na(match.index)) {
+          stop(sprintf("The skip pattern '%s' was not found in the file.", metadata.skip))
+        }
+        metadata.skip <- match.index - 1
+      }
+    }
+  } else if (is.character(skip)) {
+    preview.lines <- readLines(the.files[1], n = 100, warn = FALSE)
+    match.index <- which(grepl(skip, preview.lines))[1]
+
+    if (is.na(match.index)) {
       stop(sprintf("The skip pattern '%s' was not found in the file.", skip))
     }
-    skip <- match_index - 1
+    metadata.skip <- match.index - 1
+  } else if (is.numeric(skip)) {
+    metadata.skip <- skip
   }
-  first_file_con <- file(the.files[1], "r")
-  if (skip > 0) {
-    readLines(first_file_con, n = skip)
+  first.file.con <- file(the.files[1], "r")
+  if (metadata.skip > 0) {
+    readLines(first.file.con, n = metadata.skip)
   }
-  header_line <- readLines(first_file_con, n = 1)
-  close(first_file_con)
-  all.variables <- unlist(strsplit(header_line, split = delim, fixed = TRUE))
+  header.line <- readLines(first.file.con, n = 1)
+  close(first.file.con)
+  all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
   all.variables <- gsub('^"|"$', "", all.variables)
 
   if (is.null(the.variables) | "." %in% the.variables) {
@@ -527,7 +542,7 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
 
   awk.statements <- character(length = num.batches)
 
-  shell.type <- Sys.getenv("R_SHELL")
+  shell.type <- Sys.getenv("R.SHELL")
   if (!nzchar(shell.type)) {
     shell.type <- Sys.getenv("COMSPEC")
   }
@@ -537,7 +552,7 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
   } else {
     use.windows <- FALSE
   }
-  skip.limit <- skip + 1
+  skip.limit <- data.skip + 1 + metadata.skip
   if (use.windows) {
     string.placeholder <- '"%s"'
     statement.to.fill <- '%s -F "%s" -v OFS="," "FNR <=%s { next } %s {print %s%s}" %s'
@@ -607,6 +622,7 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
   }
+  the.files <- path.expand(the.files)
   the.files <- the.files[file.exists(the.files)]
   total.files <- length(the.files)
 
@@ -618,28 +634,49 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
     num.files.per.batch <- 1000
   }
 
-  shell.type <- Sys.getenv("R_SHELL")
+  shell.type <- Sys.getenv("R.SHELL")
   if (!nzchar(shell.type)) {
     shell.type <- Sys.getenv("COMSPEC")
   }
   use.windows <- grepl("cmd.exe", tolower(shell.type), fixed = TRUE)
-  if (is.character(skip)) {
-    preview_lines <- readLines(the.files[1], n = 100, warn = FALSE)
-    match_index <- which(grepl(skip, preview_lines))[1]
+  metadata.skip <- 0
+  data.skip <- 0
+  if (is.list(skip)) {
+    if (!is.null(skip$skip.data.rows)) {
+      data.skip <- skip$skip.data.rows
+      print(data.skip)
+    }
+    if (!is.null(skip$skip.metadata.rows)) {
+      metadata.skip <- skip$skip.metadata.rows
+      if (is.character(metadata.skip)) {
+        preview.lines <- readLines(the.files[1], n = 100, warn = FALSE)
+        match.index <- which(grepl(metadata.skip, preview.lines))[1]
 
-    if (is.na(match_index)) {
+        if (is.na(match.index)) {
+          stop(sprintf("The skip pattern '%s' was not found in the file.", metadata.skip))
+        }
+        metadata.skip <- match.index - 1
+      }
+    }
+  } else if (is.character(skip)) {
+    preview.lines <- readLines(the.files[1], n = 100, warn = FALSE)
+    match.index <- which(grepl(skip, preview.lines))[1]
+
+    if (is.na(match.index)) {
       stop(sprintf("The skip pattern '%s' was not found in the file.", skip))
     }
-    skip <- match_index - 1
+    metadata.skip <- match.index - 1
+  } else if (is.numeric(skip)) {
+    metadata.skip <- skip
   }
-  first_file_con <- file(the.files[1], "r")
-  if (skip > 0) {
-    readLines(first_file_con, n = skip)
+  first.file.con <- file(the.files[1], "r")
+  if (metadata.skip > 0) {
+    readLines(first.file.con, n = metadata.skip)
   }
-  header_line <- readLines(first_file_con, n = 1)
-  close(first_file_con)
+  header.line <- readLines(first.file.con, n = 1)
+  close(first.file.con)
 
-  all.variables <- unlist(strsplit(header_line, split = delim, fixed = TRUE))
+  all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
   all.variables <- gsub('^"|"$', "", all.variables)
 
   awk.filter <- translate.filtering.statement(
@@ -652,7 +689,8 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   } else {
     awk.action <- sprintf("{%s {count++}} ", awk.filter[[1]][1])
   }
-  skip.limit <- skip + 1
+  skip.limit <- data.skip + 1 + metadata.skip
+  print(skip.limit)
   if (use.windows) {
     string.placeholder <- '"%s"'
     statement.to.fill <- '%s -F "%s" -v OFS="," "FNR==1 && NR>1 {print prev_file, count+0; count=0} FNR==1 {prev_file=FILENAME} FNR<=%s {next} %s END {if(prev_file) print prev_file, count}" %s'
@@ -670,8 +708,8 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   }
 
   for (i in 1:num.batches) {
-    file_subset <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
-    pasted.file.names <- paste(sprintf(string.placeholder, file_subset), collapse = " ")
+    file.subset <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
+    pasted.file.names <- paste(sprintf(string.placeholder, file.subset), collapse = " ")
 
     awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, skip.limit, awk.action, pasted.file.names)
 
@@ -697,11 +735,11 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
     return(awk.statements)
   }
 
-  final_result <- rbindlist(l = list.data, fill = TRUE)
+  final.result <- rbindlist(l = list.data, fill = TRUE)
 
   if (return.as == "all") {
-    return(list(result = final_result, code = awk.statements))
+    return(list(result = final.result, code = awk.statements))
   }
 
-  return(final_result)
+  return(final.result)
 }

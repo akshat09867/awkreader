@@ -5,7 +5,7 @@ source("R/awkreader_v2.R")
 ## Constants
 
 all.files <- list.files(path = "Data/ratings data", full.names = T)
-the.files <- all.files[1:2]
+the.files <- all.files[1:4]
 
 path.to.awk <- NULL
 the.filter <- NULL
@@ -103,7 +103,7 @@ print(head(r21))
 r22 <- filtered.fread(the.files = the.files, the.filter = "item == 'sFFbD3fA0Jsvs7Ic' & rating > log(rating)", return.as = "all", include.filename = F)
 print(head(r22))
 
-r23 <- filtered.fread(the.files = the.files, the.filter = "rating == 4", return.as = "all", include.filename = F)
+r23 <- filtered.fread(the.files = the.files, the.filter = "rating == 4", return.as = "all", skip = list(skip.data.rows = 10), include.filename = F)
 print(head(r23))
 
 # Read the data in batches of size 100 and then combine.  Note that the batches are only required if the length of the AWK coding statement is too long.  Note that show.warnings = F will use suppressWarnings() to remove warning statements.  Any batch of files with no cases matching the.filter's inclusion criteria would otherwise generate a warning message.
@@ -115,9 +115,8 @@ print(head(r24))
 r25 <- filtered.fread(the.files = all.files, the.filter = "rating >= 4 & item == two.items[1]")
 print(head(r25))
 
-r26 <- filtered.fread(the.files = the.files, the.filter = "rating >= 4 & item %in% two.items", include.filename = T, num.files.per.batch = 1, show.warnings = F, return.as = "code")
+r26 <- filtered.fread(the.files = the.files, the.filter = "rating >= 4 & item %in% two.items", skip = list(skip.data.rows = 4), include.filename = T, num.files.per.batch = 4, show.warnings = F, return.as = "all")
 print(head(r26))
-
 
 ######## Testing pattern.fread
 
@@ -139,13 +138,13 @@ r32 <- pattern.fread(the.files = "Data/Titanic.csv", the.patterns = c("Female", 
 print(head(r32))
 
 
-r_count1 <- record.count(the.files = the.files, the.filter = "user > item & rating == 4", return.as = "all", include.filename = F, skip = 0)
+r_count1 <- record.count(the.files = the.files, the.filter = "user > item & rating == 4", include.filename = F, skip = list(skip.data.rows = 4), return.as = "all")
 print(r_count1)
 
 r_count2 <- record.count(the.files = the.files, the.filter = "rating == 3 | rating == 4", include.filename = T, return.as = "all")
 print(r_count2)
 
-r_count3 <- record.count(the.files = c("diamonds.csv", "diamonds.csv"), the.filter = "price > 1000 & color %in% c('E', 'F')")
+r_count3 <- record.count(the.files = c("diamonds.csv", "diamonds.csv"), the.filter = "price > 1000 & color %in% c('E', 'F')", include.filename = F)
 print(r_count3)
 
 tt <- fread("diamonds.csv")
@@ -153,11 +152,44 @@ print(tt[price > 1000 & color %in% c("E", "F"), .N])
 
 
 # Diamonds
-d1 <- filtered.fread(the.files = "diamonds.csv", the.filter = "price > 1000 & color %in% c('E', 'F')")[(.N - 1):.N, ]
+d1 <- filtered.fread(the.files = "diamonds.csv", the.filter = "price > 1000 & color %in% c('E', 'F')", return.as = "code")
 print(d1)
 
-d2 <- filtered.fread(the.files = "diamonds.csv", the.filter = "price >= 1000 & color %in% c('E', 'F')")
+d2 <- filtered.fread(the.files = "diamonds.csv", the.filter = "price >= 1000 ")
 print(d2[, .N])
 
 tt <- fread("diamonds.csv")
 print(tt[price >= 1000 & color %in% c("E", "F"), .N])
+
+
+ds <- filtered.fread(the.files = "~/Downloads/diamonds.csv", the.filter = "price > 1000 & color %in% c('E', 'F')", skip = list(skip.data.rows = 4), include.filename = FALSE, return.as = "all")
+print(ds)
+
+
+tmp.file <- tempfile(fileext = ".csv")
+sample.content <- c(
+  "#--- START OF SYSTEM METADATA LOG ---",
+  "#Generated: 2026-06-06 11:43:12",
+  "#User Session: ID_884192",
+  "#Server Status: Active",
+  "#------------------------------------",
+  "ID,Product_Name,Price,Quantity,In_Stock",
+  "1,Laptop,75.07,71,FALSE",
+  "2,Mouse,17.49,17,TRUE",
+  "3,Keyboard,154.46,46,TRUE",
+  "4,Monitor,490.58,94,TRUE",
+  "5,Desk Chair,142.24,92,TRUE",
+  "6,USB Cable,187.89,136,FALSE",
+  "7,Headphones,878.84,9,TRUE",
+  "8,Webcam,796.32,100,FALSE",
+  "9,Hard Drive,970.14,18,FALSE",
+  "10,Desk Lamp,961.48,109,FALSE"
+)
+writeLines(sample.content, tmp.file)
+
+f1 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500", include.filename = F, skip = "In_Stock")
+print(f1)
+f2 <- filtered.fread(the.files = tmp.file, the.filter = "In_Stock==TRUE", include.filename = F, skip = 5)
+print(f2)
+f3 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500 & Quantity==100 & In_Stock==FALSE", include.filename = F, skip = list(skip.data.rows = 2, skip.metadata.rows = 5), return.as = "all")
+print(f3)

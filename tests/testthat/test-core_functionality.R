@@ -261,3 +261,36 @@ test_that("record.count accurately processes numeric and string pattern skip par
     "was not found in the file"
   )
 })
+
+
+test_that("filtered.fread accurately process numeric, charaacter and list pattern of skip parameter", {
+  tmp.file <- tempfile(fileext = ".csv")
+  sample.content <- c(
+    "#--- START OF SYSTEM METADATA LOG ---",
+    "#Generated: 2026-06-06 11:43:12",
+    "#User Session: ID_884192",
+    "#Server Status: Active",
+    "#------------------------------------",
+    "ID,Product_Name,Price,Quantity,In_Stock",
+    "1,Laptop,75.07,71,FALSE",
+    "2,Mouse,17.49,17,TRUE",
+    "3,Keyboard,154.46,46,TRUE",
+    "4,Monitor,490.58,94,TRUE",
+    "5,Desk Chair,142.24,92,TRUE",
+    "6,USB Cable,187.89,136,FALSE",
+    "7,Headphones,878.84,9,TRUE",
+    "8,Webcam,796.32,100,FALSE",
+    "9,Hard Drive,970.14,18,FALSE",
+    "10,Desk Lamp,961.48,109,FALSE"
+  )
+  writeLines(sample.content, tmp.file)
+
+  on.exit(unlink(tmp.file))
+
+  f1 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500", include.filename = F, skip = "In_Stock")
+  expect_equal(nrow(f1), 4)
+  f2 <- filtered.fread(the.files = tmp.file, the.filter = "In_Stock==TRUE", include.filename = F, skip = 5)
+  expect_equal(nrow(f2), 5)
+  f3 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500 & In_Stock==FALSE", include.filename = F, skip = list(skip.data.rows = 2, skip.metadata.rows = 5))
+  expect_equal(nrow(f3), 3)
+})
