@@ -173,7 +173,7 @@ sample.content <- c(
   "#User Session: ID_884192",
   "#Server Status: Active",
   "#------------------------------------",
-  "ID,Product_Name,Price,Quantity,In_Stock",
+  # "ID,Product_Name,Price,Quantity,In_Stock",
   "1,Laptop,75.07,71,FALSE",
   "2,Mouse,17.49,17,TRUE",
   "3,Keyboard,154.46,46,TRUE",
@@ -187,9 +187,12 @@ sample.content <- c(
 )
 writeLines(sample.content, tmp.file)
 
-f1 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500", include.filename = F, skip = "In_Stock")
-print(f1)
-f2 <- filtered.fread(the.files = tmp.file, the.filter = "In_Stock==TRUE", include.filename = F, skip = 5)
+# f1 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500", include.filename = F, skip = "In_Stock")
+# print(f1)
+print("----------------HEADER CHECK--------------------------------")
+f2 <- filtered.fread(the.files = tmp.file, header = FALSE, the.filter = "V5==TRUE", include.filename = F, skip = 5, drop = c("V1", "V2", "V4"), return.as = "all")
 print(f2)
-f3 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500 & Quantity==100 & In_Stock==FALSE", include.filename = F, skip = list(skip.data.rows = 2, skip.metadata.rows = 5), return.as = "all")
+f3 <- pattern.fread(the.files = tmp.file, the.patterns = c(84, "H"), connectors = c("and"), include.filename = T, header = FALSE, skip = 5, show.warnings = F)
 print(f3)
+# f3 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500 & Quantity==100 & In_Stock==FALSE", include.filename = F, skip = list(skip.data.rows = 2, skip.metadata.rows = 5), return.as = "all")
+# print(f3)

@@ -1,11 +1,11 @@
 # Most inputs are the same as in filtered.fread()
-combined.fread <- function(the.files, path.to.awk = NULL, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+combined.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   return(filtered.fread(the.files = the.files, path.to.awk = path.to.awk, the.filter = NULL, the.variables = the.variables, include.filename = include.filename, file.header = file.header, num.files.per.batch = num.files.per.batch, return.as = return.as, envir = envir, show.warnings = show.warnings, return.data.table = return.data.table, nrows = nrows, drop = drop))
 }
 
 #' @import data.table
 #' @export
-filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filter = NULL, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim = ",", the.filter = NULL, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
   }
@@ -56,15 +56,25 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
   }
   header.line <- readLines(first.file.con, n = 1)
   close(first.file.con)
-  all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
-  all.variables <- gsub('^"|"$', "", all.variables)
-  if (is.null(the.variables) | "." %in% the.variables) {
-    the.variables <- all.variables
+  if (header) {
+    all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
+    all.variables <- gsub('^"|"$', "", all.variables)
+    if (is.null(the.variables) | "." %in% the.variables) {
+      the.variables <- all.variables
+    }
+    if (sum(the.variables %in% all.variables) == 0) {
+      stop("No variables in the data were specified.")
+    }
+  } else {
+    num_cols <- length(strsplit(header.line, delim, fixed = TRUE)[[1]])
+    all.variables <- paste0("V", 1:num_cols)
+    if (is.null(the.variables) || "." %in% the.variables) {
+      the.variables <- all.variables
+    }
+    if (sum(the.variables %in% all.variables) == 0) {
+      stop("No variables in the data were specified.")
+    }
   }
-  if (sum(the.variables %in% all.variables) == 0) {
-    stop("No variables in the data were specified.")
-  }
-
   if (!is.null(drop)) {
     if (is.numeric(drop)) {
       drop <- all.variables[drop]
@@ -76,16 +86,14 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
     stop("All variables were dropped.")
   }
 
+  w <- which(all.variables %in% the.variables)
+  column.names.awk <- paste(sprintf("$%d", w), collapse = ",")
   if (!is.numeric(num.files.per.batch)) {
     num.files.per.batch <- 1000
   }
   if (num.files.per.batch < 1) {
     num.files.per.batch <- 1000
   }
-
-  w <- which(all.variables %in% the.variables)
-  column.names.awk <- paste(sprintf("$%d", w), collapse = ",")
-
 
   string.filename <- ""
   if (include.filename == TRUE) {
@@ -115,7 +123,11 @@ filtered.fread <- function(the.files, path.to.awk = NULL, delim = ",", the.filte
   use.windows <- grepl("cmd.exe", tolower(shell.type), fixed = TRUE)
 
   awk.filter <- translate.filtering.statement(the.filter = the.filter, the.variables = all.variables, envir = envir, and.symbol = and.symbol, or.symbol = or.symbol, in.symbol = in.symbol, nin.symbol = nin.symbol, use.windows = use.windows)
-  skip.limit <- metadata.skip + 1 + data.skip
+  if (header) {
+    skip.limit <- metadata.skip + 1 + data.skip
+  } else {
+    skip.limit <- data.skip + metadata.skip
+  }
   if (use.windows) {
     string.placeholder <- '"%s"'
     statement.to.fill <- '%s -F "%s" -v OFS="," "FNR <= %s { next }{%s print %s%s}" %s'
@@ -410,7 +422,7 @@ translate.nin.statement <- function(nin.statement, the.variables, nin.symbol = "
   return(res)
 }
 
-pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk = NULL, delim = ",", connectors = "or", the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patterns = NULL, tf = TRUE, delim = ",", connectors = "or", the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
   }
@@ -470,16 +482,26 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
   }
   header.line <- readLines(first.file.con, n = 1)
   close(first.file.con)
-  all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
-  all.variables <- gsub('^"|"$', "", all.variables)
+  if (header) {
+    all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
+    all.variables <- gsub('^"|"$', "", all.variables)
 
-  if (is.null(the.variables) | "." %in% the.variables) {
-    the.variables <- all.variables
+    if (is.null(the.variables) | "." %in% the.variables) {
+      the.variables <- all.variables
+    }
+    if (sum(the.variables %in% all.variables) == 0) {
+      stop("No variables in the data were specified.  Double check that the names were spelled correctly.")
+    }
+  } else {
+    num_cols <- length(strsplit(header.line, delim, fixed = TRUE)[[1]])
+    all.variables <- paste0("V", 1:num_cols)
+    if (is.null(the.variables) || "." %in% the.variables) {
+      the.variables <- all.variables
+    }
+    if (sum(the.variables %in% all.variables) == 0) {
+      stop("No variables in the data were specified.")
+    }
   }
-  if (sum(the.variables %in% all.variables) == 0) {
-    stop("No variables in the data were specified.  Double check that the names were spelled correctly.")
-  }
-
   if (!is.null(drop)) {
     if (is.numeric(drop)) {
       drop <- all.variables[drop]
@@ -552,7 +574,11 @@ pattern.fread <- function(the.files, the.patterns = NULL, tf = TRUE, path.to.awk
   } else {
     use.windows <- FALSE
   }
-  skip.limit <- data.skip + 1 + metadata.skip
+  if (header) {
+    skip.limit <- data.skip + 1 + metadata.skip
+  } else {
+    skip.limit <- data.skip + metadata.skip
+  }
   if (use.windows) {
     string.placeholder <- '"%s"'
     statement.to.fill <- '%s -F "%s" -v OFS="," "FNR <=%s { next } %s {print %s%s}" %s'
