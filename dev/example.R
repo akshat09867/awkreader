@@ -25,6 +25,7 @@ show.warnings <- FALSE
 nrows <- Inf
 return.data.table <- TRUE
 drop <- NULL
+target_rating <- 4.5
 
 ## Variables for pattern.fread
 negations <- FALSE
@@ -100,7 +101,7 @@ r20 <- filtered.fread(the.files = the.files, the.filter = "user > item & rating 
 print(head(r20))
 r21 <- filtered.fread(the.files = the.files, the.filter = "rating == 3 & rating == rating & item == item", return.as = "all", include.filename = F)
 print(head(r21))
-r22 <- filtered.fread(the.files = the.files, the.filter = "item == 'sFFbD3fA0Jsvs7Ic' & rating > log(rating)", return.as = "all", include.filename = F)
+r22 <- filtered.fread(the.files = the.files, the.filter = "item == 'sFFbD3fA0Jsvs7Ic' & rating >= log(rating)", return.as = "all", include.filename = F)
 print(head(r22))
 
 r23 <- filtered.fread(the.files = the.files, the.filter = "rating == 4", return.as = "all", skip = list(skip.data.rows = 10), include.filename = F)
@@ -118,7 +119,7 @@ print(head(r25))
 r26 <- filtered.fread(the.files = the.files, the.filter = "rating >= 4 & item %in% two.items", skip = list(skip.data.rows = 4), include.filename = T, num.files.per.batch = 4, show.warnings = F, return.as = "all")
 print(head(r26))
 
-######## Testing pattern.fread
+####### Testing pattern.fread
 
 # Matching any row with a pattern
 
@@ -189,10 +190,25 @@ writeLines(sample.content, tmp.file)
 
 # f1 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500", include.filename = F, skip = "In_Stock")
 # print(f1)
-print("----------------HEADER CHECK--------------------------------")
+## NO HEADER
 f2 <- filtered.fread(the.files = tmp.file, header = FALSE, the.filter = "V5==TRUE", include.filename = F, skip = 5, drop = c("V1", "V2", "V4"), return.as = "all")
 print(f2)
 f3 <- pattern.fread(the.files = tmp.file, the.patterns = c(84, "H"), connectors = c("and"), include.filename = T, header = FALSE, skip = 5, show.warnings = F)
 print(f3)
 # f3 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500 & Quantity==100 & In_Stock==FALSE", include.filename = F, skip = list(skip.data.rows = 2, skip.metadata.rows = 5), return.as = "all")
 # print(f3)
+
+
+## Demonstrates Maths Functions
+
+M1 <- filtered.fread(the.files = the.files, the.filter = "rating < log(target_rating)", include.filename = F, return.as = "all")
+print(head(M1))
+
+M2 <- filtered.fread(the.files = the.files, the.filter = "rating == (target_rating - 0.5)", include.filename = F, return.as = "code")
+print(head(M2))
+
+M3 <- filtered.fread(the.files = the.files, the.filter = "log(rating) > 1.2 & item %nin% two.items", return.as = "all")
+print(head(M3))
+
+M4 <- filtered.fread(the.files = the.files, header = FALSE, the.filter = "V2 == 'sFFbD3fA0Jsvs7Ic' & V3 >= sqrt(log(V3))", return.as = "all", include.filename = F)
+print(head(M4))

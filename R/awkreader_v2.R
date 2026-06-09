@@ -311,9 +311,12 @@ translate.logical.statement <- function(the.statement, the.variables, envir = .G
     }
   }
 
-  is.math.function <- grepl(pattern = "^(log|mean|min|max|sum|exp|sqrt|abs|round)\\s*\\(", x = ending.values, ignore.case = TRUE)
+  is.function.call <- grepl(pattern = "^[A-Za-z0-9_.]+\\s*\\(.*\\)$", x = trimws(ending.values))
+
+  has.quotes <- grepl("^['\"].*['\"]$", trimws(ending.values))
+
   is.numeric.string <- !is.na(suppressWarnings(as.numeric(ending.values)))
-  to.quote <- (is.character(ending.values) | is.factor(ending.values)) & !is.math.function & !is.numeric.string
+  to.quote <- (is.character(ending.values) | is.factor(ending.values)) & !is.function.call & !is.numeric.string & !has.quotes
 
   ending.values[to.quote] <- sprintf('"%s"', ending.values[to.quote])
 
