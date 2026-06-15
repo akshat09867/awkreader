@@ -137,7 +137,7 @@ print(head(r30))
 
 r31 <- pattern.fread(the.files = the.files, the.patterns = c("8XKJD4", "0JFCj"), connectors = c("or"), include.filename = T, skip = 0, show.warnings = F)
 print(r31)
-r32 <- pattern.fread(the.files = "inst/Data/Titanic.csv", the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = "and", file.header = "source_file")
+r32 <- pattern.fread(the.files = "inst/Data/titanic.csv", the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = "and", file.header = "source_file")
 print(head(r32))
 
 ##  ------------------------SKIP-------------------
