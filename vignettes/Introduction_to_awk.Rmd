@@ -262,8 +262,6 @@ pattern.fread(the.files = the.files, the.patterns = c("W5X7", "ziPoS", "jTXm3t")
 Finally, we can turn to the Titanic data to search for specific patterns:
 
 ```{r }
-data.path <- system.file("Data", package = "awkreader")
-
-titanic.data <- list.files(path = data.path, full.names = TRUE)
-pattern.fread(the.files = titanic.data, the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = c("or", "and"))
+titanic.file <- system.file("Data", "titanic.csv", package = "awkreader")
+pattern.fread(the.files = titanic.file, the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = c("or", "and"))
 ```
