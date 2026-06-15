@@ -1,10 +1,130 @@
-# Most inputs are the same as in filtered.fread()
+utils::globalVariables(c(":="))
+
+#' Fast Batch Combining of Flat Files via AWK
+#'
+#' @description A streamlined wrapper around \code{filtered.fread} designed to quickly
+#' read, process, and combine multiple flat files into a single dataset without applying row filters.
+#'
+#' @param the.files A character vector of file paths to process. Non-existent files are automatically filtered out.
+#' @param path.to.awk A character string specifying the path to the AWK binary. If \code{NULL} (default),
+#' the function attempts to invoke a global system call to \code{"awk"}.
+#' @param header A logical value indicating whether the target files contain a header row. Default is \code{TRUE}.
+#' @param the.variables A character vector specifying which columns to retain. Use \code{"."} (default)
+#' to retain all columns.
+#' @param include.filename A logical value indicating whether to include a source file tracking column
+#' in the returned dataset. Default is \code{TRUE}.
+#' @param skip A numeric offset, a character regex pattern, or a structured list indicating lines to bypass.
+#' If a list is used, it \strong{must follow dot notation}:
+#' \itemize{
+#'   \item \code{skip.metadata.rows}: An integer count or a character regex pattern used to identify where
+#'   the metadata block ends.
+#'   \item \code{skip.data.rows}: An integer specifying the number of data rows to explicitly skip after the header.
+#' }
+#' Default is \code{0}.
+#' @param file.header A character string defining the column name for the tracked file origin.
+#' Only utilized if \code{include.filename = TRUE}. Default is \code{"file"}.
+#' @param num.files.per.batch An integer specifying how many files to aggregate per AWK system pipeline call.
+#' Default is \code{1000}.
+#' @param return.as A character string specifying the desired return object. Options are \code{"result"} (default),
+#' \code{"code"} (returns raw generated AWK scripts), or \code{"all"} (returns both).
+#' @param envir The environment context in which evaluation variables are evaluated. Default is \code{.GlobalEnv}.
+#' @param show.warnings A logical value determining whether underlying \code{data.table::fread} messages
+#' should be displayed or suppressed. Default is \code{FALSE}.
+#' @param return.data.table A logical value indicating whether to return a \code{data.table} object
+#' or a standard \code{data.frame}. Default is \code{TRUE}.
+#' @param nrows An integer specifying the maximum total rows to parse out from the batch pipeline. Default is \code{Inf}.
+#' @param drop A character or numeric index vector specifying columns that should be explicitly excluded from the final output.
+#' @param ... Extra parameters forwarded to underlying internal setup routines inside \code{filtered.fread}.
+#'
+#' @return A \code{data.table} (or \code{data.frame}), or a character vector containing the raw shell commands,
+#' depending on the value passed to \code{return.as}.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Combine multiple log files rapidly without applying filters
+#' all_logs <- combined.fread(
+#'   the.files = c("log_jan.csv", "log_feb.csv"),
+#'   skip = list(skip.metadata.rows = 2, skip.data.rows = 0)
+#' )
+#' }
 combined.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   return(filtered.fread(the.files = the.files, path.to.awk = path.to.awk, the.filter = NULL, the.variables = the.variables, include.filename = include.filename, file.header = file.header, num.files.per.batch = num.files.per.batch, return.as = return.as, envir = envir, show.warnings = show.warnings, return.data.table = return.data.table, nrows = nrows, drop = drop))
 }
 
-#' @import data.table
+#' Fast, Filtered Reading of Multiple Files via AWK
+#'
+#' @description Translates R-style filtering statements into highly efficient AWK commands
+#' to process, filter, and select specific columns from multiple flat files simultaneously.
+#' Batched outputs are fast-loaded and bound together into a single dataset.
+#'
+#' @param the.files A character vector of file paths to process. Non-existent files are automatically filtered out.
+#' @param path.to.awk A character string specifying the path to the AWK binary. If \code{NULL} (default),
+#' the function attempts to invoke a global system call to \code{"awk"}.
+#' @param header A logical value indicating whether the target files contain a header row. Default is \code{TRUE}.
+#' If \code{FALSE}, columns are auto-assigned as \code{V1}, \code{V2}, etc.
+#' @param delim A character string specifying the column separator within the files. Default is \code{","}.
+#' @param the.filter A character string or unquoted expression outlining the filtering logic to pass to AWK.
+#' Supports implicit translation of basic math and symbolic calls. Default is \code{NULL} (no filtering).
+#' @param the.variables A character vector specifying which columns to retain. Use \code{"."} (default)
+#' to retain all columns.
+#' @param include.filename A logical value indicating whether to include a source file tracking column
+#' in the returned dataset. Default is \code{TRUE}.
+#' @param skip A numeric offset, a character regex pattern, or a structured list indicating lines to bypass.
+#' If a list is used, it \strong{must follow dot notation}:
+#' \itemize{
+#'   \item \code{skip.metadata.rows}: An integer count or a character regex pattern used to identify where
+#'   the metadata block ends before hitting the core table.
+#'   \item \code{skip.data.rows}: An integer specifying the number of data rows to explicitly skip after the header.
+#' }
+#' Default is \code{0}.
+#' @param file.header A character string defining the column name for the tracked file origin.
+#' Only utilized if \code{include.filename = TRUE}. Default is \code{"file"}.
+#' @param num.files.per.batch An integer specifying how many files to aggregate per AWK system pipeline call.
+#' Default is \code{1000}.
+#' @param return.as A character string specifying the desired return object. Options are:
+#' \itemize{
+#'   \item \code{"result"} (default): Returns the compiled dataset.
+#'   \item \code{"code"}: Bypasses compilation and returns a character vector of the raw generated AWK scripts.
+#'   \item \code{"all"}: Returns a structured list containing both the compiled dataset and the underlying AWK statements.
+#' }
+#' @param envir The environment context in which evaluation characters or external metadata strings are parsed.
+#' Default is \code{.GlobalEnv}.
+#' @param and.symbol A character replacement flag for logical AND statements. Default is \code{"&"}.
+#' @param or.symbol A character replacement flag for logical OR statements. Default is \code{"|"}.
+#' @param in.symbol A character replacement flag for inclusion tests. Default is \code{"\%in\%"}.
+#' @param nin.symbol A character replacement flag for exclusion tests. Default is \code{"\%nin\%"}.
+#' @param show.warnings A logical value determining whether underlying \code{data.table::fread} shell messages
+#' should be displayed or suppressed. Default is \code{FALSE}.
+#' @param return.data.table A logical value indicating whether to return a \code{data.table} object
+#' or a standard \code{data.frame}. Default is \code{TRUE}.
+#' @param nrows An integer specifying the maximum total rows to parse out from the batch pipeline. Default is \code{Inf}.
+#' @param drop A character or numeric index vector specifying columns that should be explicitly excluded from the final output.
+#' @param ... Extra parameters forwarded to underlying internal setup routines.
+#'
+#' @return A \code{data.table} (or \code{data.frame}), or a character vector containing the raw shell commands,
+#' depending on the value passed to \code{return.as}.
+#'
+#' @importFrom data.table fread rbindlist setnames setDF
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Standard usage with a numeric filter and dot-notation row skipping
+#' my_data <- filtered.fread(
+#'   the.files = "diamonds.csv",
+#'   the.filter = "price > 5000",
+#'   skip = list(skip.metadata.rows = 0, skip.data.rows = 5)
+#' )
+#'
+#' # Read data without headers, selecting specific auto-generated columns
+#' raw_data <- filtered.fread(
+#'   the.files = "sensor_logs.txt",
+#'   header = FALSE,
+#'   delim = "\t",
+#'   the.variables = c("V1", "V3")
+#' )
+#' }
 filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim = ",", the.filter = NULL, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
@@ -179,6 +299,27 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
   return(res)
 }
 
+#' Core Translation Pipeline for Filtering Expressions
+#'
+#' @description Orchestrates the parsing and conversion of R-style filtering strings
+#' or logical statements into valid, executable AWK syntax expressions. Maps variables
+#' to their positional column indices (e.g., \code{$1}, \code{$2}) and handles
+#' operating-system-specific quote adjustments.
+#'
+#' @param the.filter A character string or unquoted expression containing the R filtering statement.
+#' @param the.variables A character vector containing the full ordered variable names from the data header.
+#' @param envir The environment context in which variable evaluations are evaluated. Default is \code{.GlobalEnv}.
+#' @param and.symbol A character tracking key for logical AND operations. Default is \code{"&"}.
+#' @param or.symbol A character tracking key for logical OR operations. Default is \code{"|"}.
+#' @param in.symbol A character tracking key for membership matching operations. Default is \code{"\%in\%"}.
+#' @param nin.symbol A character tracking key for excluded membership operations. Default is \code{"\%nin\%"}.
+#' @param equation.symbols A character vector listing the recognized relational comparison operators.
+#' Default is \code{c(">=", ">", "<=", "<", "!=", "==")}.
+#' @param use.windows A logical value indicating whether to output strings formatted for Windows shell wrappers. Default is \code{FALSE}.
+#'
+#' @return A character string representing the compiled logic statement formatted for direct injection into an AWK pipeline execution.
+#' @keywords internal
+
 translate.filtering.statement <- function(the.filter, the.variables, envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", equation.symbols = c(">=", ">", "<=", "<", "!=", "=="), use.windows = FALSE) {
   if (is.null(the.filter)) {
     return("")
@@ -266,6 +407,17 @@ translate.filtering.statement <- function(the.filter, the.variables, envir = .Gl
   return(full.translation)
 }
 
+#' Parse and Translate Standard R Logical Operators
+#'
+#' @description Evaluates low-level logical connectors within a segment of text, converting
+#' R's boolean layout terms (such as \code{&} or \code{|}) into corresponding AWK relational syntax blocks.
+#'
+#' @param the.statement A character string isolating a single logical operation block.
+#' @param the.variables A character vector containing the recognized file variable headers.
+#' @param envir The environment context in which the evaluation elements reside. Default is \code{.GlobalEnv}.
+#' @return A processed character string containing translated logical characters compatible with AWK.
+#' @keywords internal
+
 translate.logical.statement <- function(the.statement, the.variables, envir = .GlobalEnv) {
   equation.symbols <- c(">=", "<=", "!=", "==", ">", "<")
   two.sides <- FALSE
@@ -339,6 +491,20 @@ translate.logical.statement <- function(the.statement, the.variables, envir = .G
   return(res)
 }
 
+#' Translate R Vector Membership Filters to AWK Logic
+#'
+#' @description Parses explicit vector membership statements containing the \code{\%in\%} operator,
+#' translating them into structurally matching compound matching loops or array validations in AWK syntax.
+#'
+#' @param in.statement A character string representing an isolated membership statement fragment.
+#' @param the.variables A character vector matching data frame column names to map to column indexes.
+#' @param nin.symbol A character structural definition string representing negative matches. Default is \code{"\%nin\%"}.
+#' @param in.symbol A character structural definition string representing positive matches. Default is \code{"\%in\%"}.
+#' @param envir The evaluation context environment frame. Default is \code{.GlobalEnv}.
+#'
+#' @return A character string containing the mapped structural subset layout for the AWK statement block.
+#' @keywords internal
+
 translate.in.statement <- function(in.statement, the.variables, nin.symbol = "%nin%", in.symbol = "%in%", envir = .GlobalEnv) {
   in.statement <- gsub(pattern = nin.symbol, replacement = in.symbol, x = in.statement, fixed = T)
 
@@ -381,6 +547,20 @@ translate.in.statement <- function(in.statement, the.variables, nin.symbol = "%n
 
   return(res)
 }
+
+#' Translate Negated R Vector Membership Filters to AWK Logic
+#'
+#' @description Special-case handler designed to invert membership matching statements containing
+#' the \code{\%nin\%} operation rules, converting them cleanly into negated validation criteria strings for AWK.
+#'
+#' @param nin.statement A character string representing an isolated negative matching fragment.
+#' @param the.variables A character vector identifying known variable column allocations.
+#' @param nin.symbol The target string pattern matching an exclusion declaration. Default is \code{"\%nin\%"}.
+#' @param in.symbol The target string pattern matching an inclusion declaration. Default is \code{"\%in\%"}.
+#' @param envir The system environment lookup layer for evaluating vectors. Default is \code{.GlobalEnv}.
+#'
+#' @return An isolated, translated character block containing negated relational checks.
+#' @keywords internal
 
 translate.nin.statement <- function(nin.statement, the.variables, nin.symbol = "%nin%", in.symbol = "%in%", envir = .GlobalEnv) {
   in.statement <- gsub(pattern = nin.symbol, replacement = in.symbol, x = nin.statement, fixed = T)
@@ -425,6 +605,58 @@ translate.nin.statement <- function(nin.statement, the.variables, nin.symbol = "
   return(res)
 }
 
+#' Pattern-Based Subsetting and Reading of Multiple Files via AWK
+#'
+#' @description Reads and aggregates multiple flat files concurrently, filtering rows
+#' based on regular expression patterns processed directly via AWK before parsing the data into R.
+#'
+#' @param the.files A character vector of file paths to process. Non-existent files are automatically filtered out.
+#' @param path.to.awk A character string specifying the path to the AWK binary. If \code{NULL} (default),
+#' the function attempts to invoke a global system call to \code{"awk"}.
+#' @param header A logical value indicating whether the target files contain a header row. Default is \code{TRUE}.
+#' @param the.patterns A character vector containing the regular expression patterns to match against data rows. Default is \code{NULL}.
+#' @param tf A logical value determining whether to include rows that match the patterns (\code{TRUE})
+#' or exclude rows that match them (\code{FALSE}). Default is \code{TRUE}.
+#' @param delim A character string specifying the column separator within the files. Default is \code{","}.
+#' @param connectors A character string defining how multiple patterns should be combined logically.
+#' Options are \code{"or"} (default) or \code{"and"}.
+#' @param the.variables A character vector specifying which columns to retain. Use \code{"."} (default)
+#' to retain all columns.
+#' @param include.filename A logical value indicating whether to include a source file tracking column
+#' in the returned dataset. Default is \code{TRUE}.
+#' @param skip A numeric offset, a character regex pattern, or a structured list indicating lines to bypass.
+#' If a list is used, it \strong{must follow dot notation}:
+#' \itemize{
+#'   \item \code{skip.metadata.rows}: An integer count or a character regex pattern used to identify where
+#'   the metadata block ends.
+#'   \item \code{skip.data.rows}: An integer specifying the number of data rows to explicitly skip after the header.
+#' }
+#' Default is \code{0}.
+#' @param file.header A character string defining the column name for the tracked file origin.
+#' Only utilized if \code{include.filename = TRUE}. Default is \code{"file"}.
+#' @param num.files.per.batch An integer specifying how many files to aggregate per AWK system pipeline call.
+#' Default is \code{1000}.
+#' @param return.as A character string specifying the desired return object. Options are \code{"result"} (default),
+#' \code{"code"}, or \code{"all"}.
+#' @param envir The environment context in which evaluation characters are parsed. Default is \code{.GlobalEnv}.
+#' @param show.warnings A logical value determining whether underlying terminal messages should be shown. Default is \code{FALSE}.
+#' @param return.data.table A logical value indicating whether to return a \code{data.table} or standard \code{data.frame}. Default is \code{TRUE}.
+#' @param nrows An integer specifying the maximum total rows to parse out. Default is \code{Inf}.
+#' @param drop A character or numeric index vector specifying columns to explicitly exclude.
+#' @param ... Extra parameters forwarded to internal setup routines.
+#'
+#' @return A \code{data.table} (or \code{data.frame}) containing rows satisfying the pattern configurations.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Extract rows matching "Error" or "Critical" from across several log files
+#' errors <- pattern.fread(
+#'   the.files = c("server1.log", "server2.log"),
+#'   the.patterns = c("Error", "Critical"),
+#'   connectors = "or"
+#' )
+#' }
 pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patterns = NULL, tf = TRUE, delim = ",", connectors = "or", the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
@@ -641,8 +873,53 @@ pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patt
   return(res)
 }
 
-#' @import data.table
+#' Efficient Record and Row Counting via AWK
+#'
+#' @description Computes the total number of records matching specific logical filtering criteria
+#' across multiple large files using AWK. This performs counting at the shell level, eliminating
+#' the overhead of loading whole datasets into memory.
+#'
+#' @param the.files A character vector of file paths to scan. Non-existent files are automatically filtered out.
+#' @param path.to.awk A character string specifying the path to the AWK binary. If \code{NULL} (default),
+#' the function attempts to invoke a global system call to \code{"awk"}.
+#' @param delim A character string specifying the column separator within the files. Default is \code{","}.
+#' @param the.filter A character string or unquoted expression outlining the filtering logic to pass to AWK.
+#' Default is \code{NULL} (counts all records matching layout rules).
+#' @param the.variables A character vector specifying active evaluation columns. Default is \code{"."}.
+#' @param include.filename A logical value indicating whether to retain tracking metrics grouped by individual files. Default is \code{TRUE}.
+#' @param skip A numeric offset, a character regex pattern, or a structured list indicating lines to bypass.
+#' If a list is used, it \strong{must follow dot notation}:
+#' \itemize{
+#'   \item \code{skip.metadata.rows}: An integer count or a character regex pattern used to identify where
+#'   the metadata block ends.
+#'   \item \code{skip.data.rows}: An integer specifying the number of data rows to explicitly skip after the header.
+#' }
+#' Default is \code{0}.
+#' @param file.header A character string defining the tracking header index. Default is \code{"file"}.
+#' @param num.files.per.batch An integer specifying how many files to aggregate per pipeline call. Default is \code{1000}.
+#' @param return.as A character string specifying the desired return format. Options are \code{"result"} (default),
+#' \code{"code"}, or \code{"all"}.
+#' @param envir The environment context in which variables are parsed. Default is \code{.GlobalEnv}.
+#' @param and.symbol A character replacement flag for logical AND statements. Default is \code{"&"}.
+#' @param or.symbol A character replacement flag for logical OR statements. Default is \code{"|"}.
+#' @param in.symbol A character replacement flag for inclusion tests. Default is \code{"\%in\%"}.
+#' @param nin.symbol A character replacement flag for exclusion tests. Default is \code{"\%nin\%"}.
+#' @param show.warnings A logical value determining whether terminal messages are displayed. Default is \code{FALSE}.
+#' @param nrows An integer specifying the maximum total matching record sets to count. Default is \code{Inf}.
+#' @param drop A character or numeric index vector specifying columns to exclude from mapping.
+#' @param ... Extra parameters forwarded to underlying internal setup routines.
+#'
+#' @return A \code{data.table} summarizing record counts per file (or overall), or raw shell string arrays.
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Get matching transaction counts across massive datasets without importing rows
+#' total_expensive_items <- record.count(
+#'   the.files = dir(".", pattern = "sales_*.csv"),
+#'   the.filter = "price > 10000"
+#' )
+#' }
 record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter = NULL,
                          the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file",
                          num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv,

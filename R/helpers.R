@@ -1,3 +1,15 @@
+#' Global Scope Evaluation Framework for Membership Vectors
+#'
+#' @description Evaluates membership variables that point directly to larger active environment structures
+#' (like global character vectors) rather than internal row variables, building optimized inline conditional maps.
+#'
+#' @param in.statement A character expression fragment mapping lookup requirements.
+#' @param the.variables A character vector matching the positional target mapping structure.
+#' @param in.symbol The specific string structure pattern to catch.
+#' @param envir The active R runtime environment containing the target variable content array. Default is \code{.GlobalEnv}.
+#'
+#' @return A resolved logical text mapping line compatible with text extraction shell commands.
+#' @keywords internal
 translate.in.statement.global <- function(in.statement, the.variables, in.symbol, envir = .GlobalEnv) {
   pieces <- trimws(strsplit(in.statement, in.symbol)[[1]])
   left.side <- pieces[1]

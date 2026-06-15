@@ -1,0 +1,6 @@
+^LICENSE\.md$
+^\.github$
+^Readme\.md$
+^benchmark_header_logic\.R$
+^dev$
+^diamonds\.csv$

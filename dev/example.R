@@ -4,7 +4,9 @@ source("R/awkreader_v2.R")
 # rm(list = ls())
 ## Constants
 
-all.files <- list.files(path = "Data/ratings data", full.names = T)
+data.path <- system.file("Data", "ratings_data", package = "awkreader")
+
+all.files <- list.files(path = data.path, full.names = TRUE)
 the.files <- all.files[1:4]
 
 path.to.awk <- NULL
@@ -135,13 +137,13 @@ print(head(r30))
 
 r31 <- pattern.fread(the.files = the.files, the.patterns = c("8XKJD4", "0JFCj"), connectors = c("or"), include.filename = T, skip = 0, show.warnings = F)
 print(r31)
-r32 <- pattern.fread(the.files = "Data/Titanic.csv", the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = "and", file.header = "source_file")
+r32 <- pattern.fread(the.files = "inst/Data/Titanic.csv", the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = "and", file.header = "source_file")
 print(head(r32))
 
-
+##  ------------------------SKIP-------------------
 r_count1 <- record.count(the.files = the.files, the.filter = "user > item & rating == 4", include.filename = F, skip = list(skip.data.rows = 4), return.as = "all")
 print(r_count1)
-
+##  -----------------------------------
 r_count2 <- record.count(the.files = the.files, the.filter = "rating == 3 | rating == 4", include.filename = T, return.as = "all")
 print(r_count2)
 
@@ -162,10 +164,10 @@ print(d2[, .N])
 tt <- fread("diamonds.csv")
 print(tt[price >= 1000 & color %in% c("E", "F"), .N])
 
-
+##  ------------------------SKIP-------------------
 ds <- filtered.fread(the.files = "~/Downloads/diamonds.csv", the.filter = "price > 1000 & color %in% c('E', 'F')", skip = list(skip.data.rows = 4), include.filename = FALSE, return.as = "all")
 print(ds)
-
+##  -----------------------------------
 
 tmp.file <- tempfile(fileext = ".csv")
 sample.content <- c(
@@ -174,7 +176,7 @@ sample.content <- c(
   "#User Session: ID_884192",
   "#Server Status: Active",
   "#------------------------------------",
-  # "ID,Product_Name,Price,Quantity,In_Stock",
+  "ID,Product_Name,Price,Quantity,In_Stock",
   "1,Laptop,75.07,71,FALSE",
   "2,Mouse,17.49,17,TRUE",
   "3,Keyboard,154.46,46,TRUE",
@@ -188,16 +190,16 @@ sample.content <- c(
 )
 writeLines(sample.content, tmp.file)
 
-# f1 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500", include.filename = F, skip = "In_Stock")
-# print(f1)
-## NO HEADER
-f2 <- filtered.fread(the.files = tmp.file, header = FALSE, the.filter = "V5==TRUE", include.filename = F, skip = 5, drop = c("V1", "V2", "V4"), return.as = "all")
+##  ------------------------SKIP-------------------
+f1 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500", include.filename = F, skip = "In_Stock")
+print(f1)
+f2 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500 & Quantity==100 & In_Stock==FALSE", include.filename = F, skip = list(skip.data.rows = 2, skip.metadata.rows = 5), return.as = "all")
 print(f2)
-f3 <- pattern.fread(the.files = tmp.file, the.patterns = c(84, "H"), connectors = c("and"), include.filename = T, header = FALSE, skip = 5, show.warnings = F)
-print(f3)
-# f3 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500 & Quantity==100 & In_Stock==FALSE", include.filename = F, skip = list(skip.data.rows = 2, skip.metadata.rows = 5), return.as = "all")
+## ---------------------------------NO HEADER-----------------------
+# f3 <- filtered.fread(the.files = tmp.file, header = FALSE, the.filter = "V5==TRUE", include.filename = F, skip = 5, drop = c("V1", "V2", "V4"), return.as = "all")
 # print(f3)
-
+# f4 <- pattern.fread(the.files = tmp.file, the.patterns = c(84, "H"), connectors = c("and"), include.filename = T, header = FALSE, skip = 5, show.warnings = F)
+# print(f4)
 
 ## Demonstrates Maths Functions
 
@@ -212,3 +214,7 @@ print(head(M3))
 
 M4 <- filtered.fread(the.files = the.files, header = FALSE, the.filter = "V2 == 'sFFbD3fA0Jsvs7Ic' & V3 >= sqrt(log(V3))", return.as = "all", include.filename = F)
 print(head(M4))
+
+
+vc <- filtered.fread(the.files = "~/Downloads/diamonds.csv", the.filter = "price > 1000 & color %in% c('E', 'F')", skip = list(skip.data.rows = 100), return.as = "all")
+print(head(vc))
