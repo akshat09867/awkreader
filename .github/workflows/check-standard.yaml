@@ -47,10 +47,14 @@ jobs:
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: |
+            any::rcmdcheck
             any::devtools
             any::testthat
             any::data.table
 
-      - name: Run Test Suite Only
-        run: |
-          Rscript -e "devtools::test()"
+      - name: Run Full R CMD Check
+        uses: r-lib/actions/check-r@v2
+        with:
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: "warning"
+          check-dir: "check"
