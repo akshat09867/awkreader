@@ -53,8 +53,8 @@ jobs:
             any::data.table
 
       - name: Run Full R CMD Check
-        uses: r-lib/actions/check-r@v2
-        with:
-          args: 'c("--no-manual", "--as-cran")'
-          error-on: "warning"
-          check-dir: "check"
+              uses: r-lib/actions/check-r-package@v2
+              with:
+                args: 'c("--no-manual", "--as-cran")'
+                error-on: "warning"
+                check-dir: "check"
