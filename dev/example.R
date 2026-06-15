@@ -4,7 +4,7 @@ source("R/awkreader_v2.R")
 # rm(list = ls())
 ## Constants
 
-data.path <- system.file("Data", "ratings_data", package = "awkreader")
+data.path <- system.file("extdata", "ratings_data", package = "awkreader")
 
 all.files <- list.files(path = data.path, full.names = TRUE)
 the.files <- all.files[1:4]
@@ -137,7 +137,7 @@ print(head(r30))
 
 r31 <- pattern.fread(the.files = the.files, the.patterns = c("8XKJD4", "0JFCj"), connectors = c("or"), include.filename = T, skip = 0, show.warnings = F)
 print(r31)
-r32 <- pattern.fread(the.files = "inst/Data/titanic.csv", the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = "and", file.header = "source_file")
+r32 <- pattern.fread(the.files = "inst/extdata/titanic.csv", the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = "and", file.header = "source_file")
 print(head(r32))
 
 ##  ------------------------SKIP-------------------

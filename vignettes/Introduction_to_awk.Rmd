@@ -74,7 +74,7 @@ The purpose of combined.fread is to read and aggregate data from multiple files.
 Here we will use list.files to generate a character vector of all of the ratings data files.  Then we will use combined.fread to read and aggregate the first two files.
 
 ```{r }
-data.path <- system.file("Data", "ratings_data", package = "awkreader")
+data.path <- system.file("extdata", "ratings_data", package = "awkreader")
 
 all.files <- list.files(path = data.path, full.names = TRUE)
 
@@ -262,6 +262,6 @@ pattern.fread(the.files = the.files, the.patterns = c("W5X7", "ziPoS", "jTXm3t")
 Finally, we can turn to the Titanic data to search for specific patterns:
 
 ```{r }
-titanic.file <- system.file("Data", "titanic.csv", package = "awkreader")
+titanic.file <- system.file("extdata", "titanic.csv", package = "awkreader")
 pattern.fread(the.files = titanic.file, the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = c("or", "and"))
 ```
