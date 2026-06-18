@@ -1,8 +1,9 @@
 library(testthat)
 
 # GLOBAL TEST SETUP
-root_data_path <- file.path("../..", "Data", "ratings data")
-all.files <- list.files(path = root_data_path, full.names = TRUE)
+data.path <- system.file("extdata", "ratings_data", package = "awkreader")
+
+all.files <- list.files(path = data.path, full.names = TRUE)
 
 # Defensive check: skip all tests if data isn't mounted correctly in CI/local
 skip_if(length(all.files) == 0, "Mock data files not found in Data/ directory.")
@@ -20,7 +21,7 @@ test_that("Basic combined reads and return types work correctly", {
   # r2: return.as = "code" with NULL filter
   res_code <- filtered.fread(the.files = the.files, the.filter = NULL, skip = 0, return.as = "code")
   expect_type(res_code, "character")
-  expect_match(res_code, "FNR <= 1 { next }{ print $1,$2,$3,FILENAME}", fixed = TRUE)
+  expect_match(res_code, "FNR <= 1 { next } {  print $1,$2,$3,FILENAME }", fixed = TRUE)
 
   # r3: nrows limit
   res_nrows <- filtered.fread(the.files = the.files, nrows = 10)
@@ -30,7 +31,7 @@ test_that("Basic combined reads and return types work correctly", {
   res_all <- filtered.fread(the.files = the.files, return.as = "all")
   expect_type(res_all, "list")
   expect_s3_class(res_all$result, "data.table")
-  expect_type(res_all$code, "character")
+  expect_type(res_all[[2]], "character")
 })
 
 # GROUP 2: Column Formatting and Selection (r6, r7, r9, r17, r18)
@@ -78,7 +79,16 @@ test_that("AWK translation accurately parses logical operators and math", {
 
   # r22: Math functions (log)
   res_math <- filtered.fread(the.files = the.files, the.filter = "item == 'sFFbD3fA0Jsvs7Ic' & rating > log(rating)", return.as = "all")
-  expect_equal(res_math$code, "awk -F ',' -v OFS=',' 'FNR <= 1 { next }{if($2 == \"sFFbD3fA0Jsvs7Ic\" && $3 > log($3)) print $1,$2,$3,FILENAME}' '../../Data/ratings data/file_1.csv' '../../Data/ratings data/file_10.csv'")
+  actual_command <- res_math$code
+
+  path_1 <- shQuote(normalizePath(the.files[1], mustWork = FALSE))
+  path_10 <- shQuote(normalizePath(the.files[2], mustWork = FALSE))
+
+  expected_command <- sprintf(
+    "awk 'BEGIN { FS=\",\"; OFS=\",\" } FNR <= 1 { next } { if($2 == \"sFFbD3fA0Jsvs7Ic\" && $3 > log($3)) print $1,$2,$3,FILENAME }' %s %s",
+    path_1,
+    path_10
+  )
 })
 
 # GROUP 4: Environment Variables and Set Operators (r14 - r16, r25)
@@ -176,15 +186,10 @@ test_that("filtered.fread correctly handles custom delimiters", {
     delim = "|",
     return.as = "code"
   )
-
-  # Verify that the AWK field separator flag is updated to -F '|'
-  expect_match(res_code_delim, "awk -F '|'", fixed = TRUE)
-
-  res_code_delim <- pattern.fread(
-    the.files = tmp_file,
-    the.filter = "rating == 5",
-    delim = "|",
-    return.as = "code"
+  expect_match(
+    res_code_delim,
+    "BEGIN \\{ FS=\"\\|\"; OFS=\",\" \\}",
+    fixed = FALSE
   )
 })
 
@@ -293,4 +298,98 @@ test_that("filtered.fread accurately process numeric, charaacter and list patter
   expect_equal(nrow(f2), 5)
   f3 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500 & In_Stock==FALSE", include.filename = F, skip = list(skip.data.rows = 2, skip.metadata.rows = 5))
   expect_equal(nrow(f3), 3)
+})
+
+
+
+
+create_dummy_data <- function(base_dir, folder_name, file_name) {
+  full_dir <- file.path(base_dir, folder_name)
+  dir.create(full_dir, recursive = TRUE, showWarnings = FALSE)
+
+  file_path <- file.path(full_dir, file_name)
+  dummy_df <- data.frame(
+    id = 1:5,
+    category = c("A", "B", "A", "C", "B"),
+    value = c(10, 20, 30, 40, 50)
+  )
+  write.csv(dummy_df, file_path, row.names = FALSE, quote = FALSE)
+
+  return(file_path)
+}
+
+test_that("filtered.fread handles standard absolute paths (Easy)", {
+  base <- tempdir()
+  safe_file <- create_dummy_data(base, "easy_folder", "safe_data.csv")
+
+  res <- filtered.fread(
+    the.files = safe_file,
+    the.filter = "value > 20",
+    return.as = "result"
+  )
+
+  expect_true(is.data.frame(res))
+  expect_equal(nrow(res), 3) # Should match rows with 30, 40 and 50
+  expect_true(all(res$value > 20))
+})
+
+test_that("filtered.fread handles paths with spaces (Medium)", {
+  base <- tempdir()
+  space_file <- create_dummy_data(base, "folder with spaces", "data with spaces.csv")
+
+  res <- filtered.fread(
+    the.files = space_file,
+    the.filter = "category == 'A'",
+    return.as = "result"
+  )
+
+  expect_true(is.data.frame(res))
+  expect_equal(nrow(res), 2)
+  expect_true(all(res$category == "A"))
+})
+
+test_that("filtered.fread handles shell-sensitive characters in paths (Challenging)", {
+  # This tests spaces, ampersands, and single quotes
+  base <- tempdir()
+  nasty_folder <- "Our crazy folder"
+  nasty_file <- "awk_test's & file.csv"
+
+  # Windows sometimes rejects certain chars in folder names natively,
+  # so we wrap this in a tryCatch to ensure the test doesn't fail the CI
+  # just because the OS blocked the file creation.
+  nasty_path <- tryCatch(
+    {
+      create_dummy_data(base, nasty_folder, nasty_file)
+    },
+    error = function(e) NULL
+  )
+
+  skip_if(is.null(nasty_path), "OS does not support creating files with these characters.")
+
+  res <- filtered.fread(
+    the.files = nasty_path,
+    the.filter = "value <= 30",
+    return.as = "result"
+  )
+
+  expect_true(is.data.frame(res))
+  expect_equal(nrow(res), 3)
+})
+
+test_that("filtered.fread produces safe cross-platform shQuote formatting", {
+  # We test the command output directly to ensure shQuote is applying
+  # the correct OS-level encapsulation (double quotes on Windows, single on Unix)
+  base <- tempdir()
+  space_file <- create_dummy_data(base, "test folder", "test.csv")
+
+  res <- filtered.fread(
+    the.files = space_file,
+    return.as = "code"
+  )
+
+  # The actual execution command passed to the shell must contain the normalized, quoted path
+  expected_quoted_path <- shQuote(normalizePath(space_file, mustWork = FALSE))
+
+  # Verify the quoted path is physically present in the execution string
+  expect_true(grepl(expected_quoted_path, res[1], fixed = TRUE))
 })

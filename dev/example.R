@@ -141,7 +141,7 @@ r32 <- pattern.fread(the.files = "inst/extdata/titanic.csv", the.patterns = c("F
 print(head(r32))
 
 ##  ------------------------SKIP-------------------
-r_count1 <- record.count(the.files = the.files, the.filter = "user > item & rating == 4", include.filename = F, skip = list(skip.data.rows = 4), return.as = "all")
+r_count1 <- record.count(the.files = the.files, the.filter = "user > item & rating == 4", include.filename = T, skip = list(skip.data.rows = 4), return.as = "all")
 print(r_count1)
 ##  -----------------------------------
 r_count2 <- record.count(the.files = the.files, the.filter = "rating == 3 | rating == 4", include.filename = T, return.as = "all")

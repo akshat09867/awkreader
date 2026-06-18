@@ -137,7 +137,7 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
   if (!is.logical(return.data.table)) {
     return.data.table <- TRUE
   }
-  the.files <- path.expand(the.files)
+  the.files <- normalizePath(the.files)
   the.files <- the.files[file.exists(the.files)]
 
   total.files <- length(the.files)
@@ -171,11 +171,12 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
     metadata.skip <- skip
   }
   first.file.con <- file(the.files[1], "r")
+  on.exit(close(first.file.con), add = TRUE)
   if (metadata.skip > 0) {
     readLines(first.file.con, n = metadata.skip)
   }
   header.line <- readLines(first.file.con, n = 1)
-  close(first.file.con)
+
   if (header) {
     all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
     all.variables <- gsub('^"|"$', "", all.variables)
@@ -225,44 +226,45 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
   num.batches <- ceiling(total.files / num.files.per.batch)
 
   awk.statements <- character(length = num.batches)
+  expanded.statements <- character(length = num.batches)
 
-  # If path to awk isn't provided, awk can be added to system path (Windows), or may already be on the path (Mac)
-  if (is.null(path.to.awk)) {
+  if (is.null(path.to.awk) && .Platform$OS.type == "windows") {
+    path.to.awk <- find.awk.binary()
+  } else {
     path.to.awk <- "awk"
   }
-  # Otherwise, telling the function where to find awk installed would work. Like so:
-  # path.to.awk = 'C:/"Program Files (X86)"/GnuWin32/bin/awk' #My installed awk is here. Note the double quotes around paths with spaces
 
-  # Using Windows double-quoting if shell uses cmd.exe, else using single-quoting
-  # OS = sessionInfo()$running  #To see the OS, but currently looking for the CMD.EXE executable in shell.type
-  shell.type <- Sys.getenv("R.SHELL")
-  if (!nzchar(shell.type)) {
-    shell.type <- Sys.getenv("COMSPEC")
-  }
 
-  use.windows <- grepl("cmd.exe", tolower(shell.type), fixed = TRUE)
-
-  awk.filter <- translate.filtering.statement(the.filter = the.filter, the.variables = all.variables, envir = envir, and.symbol = and.symbol, or.symbol = or.symbol, in.symbol = in.symbol, nin.symbol = nin.symbol, use.windows = use.windows)
+  awk.filter <- translate.filtering.statement(the.filter = the.filter, the.variables = all.variables, envir = envir, and.symbol = and.symbol, or.symbol = or.symbol, in.symbol = in.symbol, nin.symbol = nin.symbol)
   if (header) {
+    if (is.null(path.to.awk) && .Platform$OS.type == "windows") {
+      path.to.awk <- find.awk.binary()
+    } else {
+      path.to.awk <- "awk"
+    }
     skip.limit <- metadata.skip + 1 + data.skip
   } else {
     skip.limit <- data.skip + metadata.skip
   }
-  if (use.windows) {
-    string.placeholder <- '"%s"'
-    statement.to.fill <- '%s -F "%s" -v OFS="," "FNR <= %s { next }{%s print %s%s}" %s'
-  } else {
-    string.placeholder <- "'%s'"
-    statement.to.fill <- "%s -F '%s' -v OFS=',' 'FNR <= %s { next }{%s print %s%s}' %s"
-  }
+  awk.script.content <- sprintf(
+    'BEGIN { FS="%s"; OFS="," } FNR <= %s { next } { %s print %s%s }',
+    delim, skip.limit, awk.filter, column.names.awk, string.filename
+  )
+
+  temp.script <- tempfile(fileext = ".awk")
+  writeLines(awk.script.content, con = temp.script)
+  on.exit(unlink(temp.script), add = TRUE)
+
   for (i in 1:num.batches) {
-    pasted.file.names <- paste(sprintf(string.placeholder, the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]), collapse = " ")
-    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, skip.limit, awk.filter, column.names.awk, string.filename, pasted.file.names)
+    batch.files <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
+    pasted.file.names <- paste(shQuote(batch.files), collapse = " ")
+
+    awk.statements[i] <- sprintf("%s -f %s %s", path.to.awk, shQuote(normalizePath(temp.script, mustWork = FALSE)), pasted.file.names)
+    expanded.statements[i] <- sprintf("%s '%s' %s", path.to.awk, awk.script.content, pasted.file.names)
     if (return.as != value.code) {
       if (show.warnings == TRUE) {
         batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ",")
-      }
-      if (show.warnings != TRUE) {
+      } else {
         suppressWarnings(batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ","))
       }
 
@@ -278,8 +280,9 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
   }
 
   if (return.as == value.code) {
-    res <- awk.statements
+    res <- expanded.statements
   }
+
   if (return.as != value.code) {
     the.result <- rbindlist(l = list.data, fill = T)
     if (nrows < nrow(the.result)) {
@@ -288,9 +291,14 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
     if (return.data.table == FALSE) {
       setDF(the.result)
     }
+
     if (return.as == value.all) {
-      res <- list(result = the.result, code = awk.statements)
+      res <- list(
+        result = the.result,
+        code = expanded.statements
+      )
     }
+
     if (return.as != value.all) {
       res <- the.result
     }
@@ -315,12 +323,11 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
 #' @param nin.symbol A character tracking key for excluded membership operations. Default is \code{"\%nin\%"}.
 #' @param equation.symbols A character vector listing the recognized relational comparison operators.
 #' Default is \code{c(">=", ">", "<=", "<", "!=", "==")}.
-#' @param use.windows A logical value indicating whether to output strings formatted for Windows shell wrappers. Default is \code{FALSE}.
-#'
+
 #' @return A character string representing the compiled logic statement formatted for direct injection into an AWK pipeline execution.
 #' @keywords internal
 
-translate.filtering.statement <- function(the.filter, the.variables, envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", equation.symbols = c(">=", ">", "<=", "<", "!=", "=="), use.windows = FALSE) {
+translate.filtering.statement <- function(the.filter, the.variables, envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", equation.symbols = c(">=", ">", "<=", "<", "!=", "==")) {
   if (is.null(the.filter)) {
     return("")
   }
@@ -329,13 +336,6 @@ translate.filtering.statement <- function(the.filter, the.variables, envir = .Gl
   }
   if (the.filter[1] == "") {
     return("")
-  }
-
-  if (use.windows == TRUE) {
-    quotation.escape <- '\\"'
-  }
-  if (use.windows == FALSE) {
-    quotation.escape <- '\"'
   }
 
   trimmed.filter <- trimws(the.filter)
@@ -360,8 +360,8 @@ translate.filtering.statement <- function(the.filter, the.variables, envir = .Gl
   num.conjunctions <- num.pieces - 1
   translated.pieces <- character(length = num.pieces)
 
-  equation.symbols.characters <- c("=", "!", "<", ">")
-  equation.symbols <- c(">=", "<=", "!=", "==", ">", "<")
+  # equation.symbols.characters <- c("=", "!", "<", ">")
+  # equation.symbols <- c(">=", "<=", "!=", "==", ">", "<")
 
   for (i in 1:num.pieces) {
     this.piece <- paste(each.character[begin[i]:end[i]], collapse = "")
@@ -394,9 +394,7 @@ translate.filtering.statement <- function(the.filter, the.variables, envir = .Gl
 
   full.translation <- trimws(sprintf("if(%s%s)", paste(sprintf("%s %s%s", trimws(translated.pieces[1:(num.pieces - 1)]), translated.conjunctions, inc.space), collapse = ""), trimws(translated.pieces[num.pieces])))
 
-
-  full.translation <- gsub(pattern = '"', replacement = quotation.escape, x = full.translation, fixed = T)
-  full.translation <- gsub(pattern = "'", replacement = quotation.escape, x = full.translation, fixed = T)
+  full.translation <- gsub(pattern = "'", replacement = '"', x = full.translation, fixed = T)
 
   for (i in 1:length(the.variables)) {
     full.translation <- gsub(pattern = the.variables[i], replacement = sprintf("$%d", i), x = full.translation)
@@ -674,7 +672,7 @@ pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patt
   if (!is.logical(return.data.table)) {
     return.data.table <- TRUE
   }
-  the.files <- path.expand(the.files)
+  the.files <- normalizePath(the.files)
   the.files <- the.files[file.exists(the.files)]
 
   total.files <- length(the.files)
@@ -712,11 +710,12 @@ pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patt
     metadata.skip <- skip
   }
   first.file.con <- file(the.files[1], "r")
+  on.exit(close(first.file.con), add = TRUE)
   if (metadata.skip > 0) {
     readLines(first.file.con, n = metadata.skip)
   }
   header.line <- readLines(first.file.con, n = 1)
-  close(first.file.con)
+
   if (header) {
     all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
     all.variables <- gsub('^"|"$', "", all.variables)
@@ -798,39 +797,31 @@ pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patt
   num.batches <- ceiling(total.files / num.files.per.batch)
 
   awk.statements <- character(length = num.batches)
+  expanded.statements <- character(length = num.batches)
 
-  shell.type <- Sys.getenv("R.SHELL")
-  if (!nzchar(shell.type)) {
-    shell.type <- Sys.getenv("COMSPEC")
-  }
-
-  if (grepl("cmd.exe", tolower(shell.type), fixed = TRUE)) {
-    use.windows <- TRUE
-  } else {
-    use.windows <- FALSE
-  }
   if (header) {
     skip.limit <- data.skip + 1 + metadata.skip
   } else {
     skip.limit <- data.skip + metadata.skip
   }
-  if (use.windows) {
-    string.placeholder <- '"%s"'
-    statement.to.fill <- '%s -F "%s" -v OFS="," "FNR <=%s { next } %s {print %s%s}" %s'
-  } else {
-    string.placeholder <- "'%s'"
-    statement.to.fill <- "%s -F '%s' -v OFS=',' 'FNR <= %s { next } %s {print %s%s}' %s"
-  }
+  awk.script.content <- sprintf('BEGIN { FS="%s"; OFS="," } FNR <= %s { next } %s {print %s%s}', delim, skip.limit, awk.pattern, column.names.awk, string.filename)
 
-  if (is.null(path.to.awk)) {
+  temp_script <- tempfile(fileext = ".awk")
+  writeLines(awk.script.content, temp_script)
+  on.exit(unlink(temp_script), add = TRUE)
+
+  if (is.null(path.to.awk) && .Platform$OS.type == "windows") {
+    path.to.awk <- find.awk.binary()
+  } else {
     path.to.awk <- "awk"
   }
 
   for (i in 1:num.batches) {
-    pasted.file.names <- paste(sprintf(string.placeholder, the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]), collapse = " ")
+    batch.files <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
+    pasted.file.names <- paste(shQuote(batch.files), collapse = " ")
 
-    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, skip.limit, awk.pattern, column.names.awk, string.filename, pasted.file.names)
-
+    awk.statements[i] <- sprintf("%s -f %s %s", path.to.awk, shQuote(normalizePath(temp_script)), pasted.file.names)
+    expanded.statements[i] <- sprintf("%s '%s' %s", path.to.awk, awk.script.content, pasted.file.names)
     if (return.as != value.code) {
       if (show.warnings == TRUE) {
         batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ",")
@@ -851,7 +842,7 @@ pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patt
   }
 
   if (return.as == value.code) {
-    res <- awk.statements
+    res <- expanded.statements
   }
   if (return.as != value.code) {
     the.result <- rbindlist(l = list.data, fill = T)
@@ -863,7 +854,7 @@ pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patt
       the.result <- the.result[1:nrows, ]
     }
     if (return.as == value.all) {
-      res <- list(result = the.result, code = awk.statements)
+      res <- list(result = the.result, code = expanded.statements)
     }
     if (return.as != value.all) {
       res <- the.result
@@ -928,7 +919,7 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
   }
-  the.files <- path.expand(the.files)
+  the.files <- normalizePath(the.files)
   the.files <- the.files[file.exists(the.files)]
   total.files <- length(the.files)
 
@@ -940,17 +931,11 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
     num.files.per.batch <- 1000
   }
 
-  shell.type <- Sys.getenv("R.SHELL")
-  if (!nzchar(shell.type)) {
-    shell.type <- Sys.getenv("COMSPEC")
-  }
-  use.windows <- grepl("cmd.exe", tolower(shell.type), fixed = TRUE)
   metadata.skip <- 0
   data.skip <- 0
   if (is.list(skip)) {
     if (!is.null(skip$skip.data.rows)) {
       data.skip <- skip$skip.data.rows
-      print(data.skip)
     }
     if (!is.null(skip$skip.metadata.rows)) {
       metadata.skip <- skip$skip.metadata.rows
@@ -976,11 +961,11 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
     metadata.skip <- skip
   }
   first.file.con <- file(the.files[1], "r")
+  on.exit(close(first.file.con), add = TRUE)
   if (metadata.skip > 0) {
     readLines(first.file.con, n = metadata.skip)
   }
   header.line <- readLines(first.file.con, n = 1)
-  close(first.file.con)
 
   all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
   all.variables <- gsub('^"|"$', "", all.variables)
@@ -988,7 +973,7 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   awk.filter <- translate.filtering.statement(
     the.filter = the.filter, the.variables = all.variables, envir = envir,
     and.symbol = and.symbol, or.symbol = or.symbol, in.symbol = in.symbol,
-    nin.symbol = nin.symbol, use.windows = use.windows
+    nin.symbol = nin.symbol
   )
   if (is.null(the.filter) || awk.filter == "") {
     awk.action <- "{count++}"
@@ -996,29 +981,31 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
     awk.action <- sprintf("{%s {count++}} ", awk.filter[[1]][1])
   }
   skip.limit <- data.skip + 1 + metadata.skip
-  print(skip.limit)
-  if (use.windows) {
-    string.placeholder <- '"%s"'
-    statement.to.fill <- '%s -F "%s" -v OFS="," "FNR==1 && NR>1 {print prev_file, count+0; count=0} FNR==1 {prev_file=FILENAME} FNR<=%s {next} %s END {if(prev_file) print prev_file, count}" %s'
-  } else {
-    string.placeholder <- "'%s'"
-    statement.to.fill <- "%s -F '%s' -v OFS=',' 'FNR==1 && NR>1 {print prev_file, count+0; count=0} FNR==1 {prev_file=FILENAME} FNR<=%s {next} %s  END {if(prev_file) print prev_file, count}' %s"
-  }
+
 
   num.batches <- ceiling(total.files / num.files.per.batch)
   awk.statements <- character(length = num.batches)
+  expanded.statements <- character(length = num.batches)
   list.data <- list()
 
-  if (is.null(path.to.awk)) {
+  if (is.null(path.to.awk) && .Platform$OS.type == "windows") {
+    path.to.awk <- find.awk.binary()
+  } else {
     path.to.awk <- "awk"
   }
-
+  awk.script.content <- sprintf(
+    'BEGIN { FS="%s"; OFS="," } FNR==1 && NR>1 {print prev_file, count+0; count=0} FNR==1 {prev_file=FILENAME} FNR<=%s {next} %s END {if(prev_file) print prev_file, count}',
+    delim, skip.limit, awk.action
+  )
+  temp.script <- tempfile(fileext = ".awk")
+  writeLines(awk.script.content, con = temp.script)
+  on.exit(unlink(temp.script), add = TRUE)
   for (i in 1:num.batches) {
-    file.subset <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
-    pasted.file.names <- paste(sprintf(string.placeholder, file.subset), collapse = " ")
+    batch.files <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
+    pasted.file.names <- paste(shQuote(batch.files), collapse = " ")
 
-    awk.statements[i] <- sprintf(statement.to.fill, path.to.awk, delim, skip.limit, awk.action, pasted.file.names)
-
+    awk.statements[i] <- sprintf("%s -f %s %s", path.to.awk, shQuote(normalizePath(temp.script)), pasted.file.names)
+    expanded.statements[i] <- sprintf("%s '%s' %s", path.to.awk, awk.script.content, pasted.file.names)
     if (return.as != "code") {
       if (show.warnings) {
         batch.data <- fread(cmd = awk.statements[i], fill = TRUE, nrows = nrows, header = FALSE, sep = ",")
@@ -1038,13 +1025,13 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   }
 
   if (return.as == "code") {
-    return(awk.statements)
+    return(expanded.statements)
   }
 
   final.result <- rbindlist(l = list.data, fill = TRUE)
 
   if (return.as == "all") {
-    return(list(result = final.result, code = awk.statements))
+    return(list(result = final.result, code = expanded.statements))
   }
 
   return(final.result)

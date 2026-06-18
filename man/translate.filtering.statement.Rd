@@ -12,8 +12,7 @@ translate.filtering.statement(
   or.symbol = "|",
   in.symbol = "\%in\%",
   nin.symbol = "\%nin\%",
-  equation.symbols = c(">=", ">", "<=", "<", "!=", "=="),
-  use.windows = FALSE
+  equation.symbols = c(">=", ">", "<=", "<", "!=", "==")
 )
 }
 \arguments{
@@ -33,8 +32,6 @@ translate.filtering.statement(
 
 \item{equation.symbols}{A character vector listing the recognized relational comparison operators.
 Default is \code{c(">=", ">", "<=", "<", "!=", "==")}.}
-
-\item{use.windows}{A logical value indicating whether to output strings formatted for Windows shell wrappers. Default is \code{FALSE}.}
 }
 \value{
 A character string representing the compiled logic statement formatted for direct injection into an AWK pipeline execution.
