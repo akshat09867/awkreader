@@ -221,27 +221,15 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
     string.filename <- ",FILENAME"
   }
 
-  list.data <- list()
-
   num.batches <- ceiling(total.files / num.files.per.batch)
-
-  awk.statements <- character(length = num.batches)
-  expanded.statements <- character(length = num.batches)
-
   if (is.null(path.to.awk) && .Platform$OS.type == "windows") {
     path.to.awk <- find.awk.binary()
   } else {
     path.to.awk <- "awk"
   }
 
-
   awk.filter <- translate.filtering.statement(the.filter = the.filter, the.variables = all.variables, envir = envir, and.symbol = and.symbol, or.symbol = or.symbol, in.symbol = in.symbol, nin.symbol = nin.symbol)
   if (header) {
-    if (is.null(path.to.awk) && .Platform$OS.type == "windows") {
-      path.to.awk <- find.awk.binary()
-    } else {
-      path.to.awk <- "awk"
-    }
     skip.limit <- metadata.skip + 1 + data.skip
   } else {
     skip.limit <- data.skip + metadata.skip
@@ -251,34 +239,9 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
     delim, skip.limit, awk.filter, column.names.awk, string.filename
   )
 
-  temp.script <- tempfile(fileext = ".awk")
-  writeLines(awk.script.content, con = temp.script)
-  on.exit(unlink(temp.script), add = TRUE)
-
-  for (i in 1:num.batches) {
-    batch.files <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
-    pasted.file.names <- paste(shQuote(batch.files), collapse = " ")
-
-    awk.statements[i] <- sprintf("%s -f %s %s", path.to.awk, shQuote(normalizePath(temp.script, mustWork = FALSE)), pasted.file.names)
-    expanded.statements[i] <- sprintf("%s '%s' %s", path.to.awk, awk.script.content, pasted.file.names)
-    if (return.as != value.code) {
-      if (show.warnings == TRUE) {
-        batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ",")
-      } else {
-        suppressWarnings(batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ","))
-      }
-
-      if (nrow(batch.data) > 0) {
-        if (!include.filename) {
-          setnames(batch.data, all.variables[w])
-        } else {
-          setnames(batch.data, c(all.variables[w], file.header))
-        }
-      }
-      list.data[[i]] <- batch.data
-    }
-  }
-
+  outputs <- execute.awk.stream(awk.script.content, the.files, value.code, all.variables[w], include.filename, num.batches, num.files.per.batch, path.to.awk, total.files, show.warnings, nrows, file.header, return.as)
+  list.data <- outputs$list.data
+  expanded.statements <- outputs$expanded.statements
   if (return.as == value.code) {
     res <- expanded.statements
   }
@@ -434,7 +397,7 @@ translate.logical.statement <- function(the.statement, the.variables, envir = .G
     return(the.statement)
   }
 
-  ending.values <- equation.pieces
+  col <- equation.pieces
 
   for (i in 1:length(equation.pieces)) {
     contains.column <- FALSE
@@ -456,21 +419,21 @@ translate.logical.statement <- function(the.statement, the.variables, envir = .G
       )
 
       if (exists.in.envir) {
-        ending.values[i] <- eval(expr = parse(text = trimws(equation.pieces[i])), envir = envir)
+        col[i] <- eval(expr = parse(text = trimws(equation.pieces[i])), envir = envir)
       }
     }
   }
 
-  is.function.call <- grepl(pattern = "^[A-Za-z0-9_.]+\\s*\\(.*\\)$", x = trimws(ending.values))
+  is.function.call <- grepl(pattern = "^[A-Za-z0-9_.]+\\s*\\(.*\\)$", x = trimws(col))
 
-  has.quotes <- grepl("^['\"].*['\"]$", trimws(ending.values))
+  has.quotes <- grepl("^['\"].*['\"]$", trimws(col))
 
-  is.numeric.string <- !is.na(suppressWarnings(as.numeric(ending.values)))
-  to.quote <- (is.character(ending.values) | is.factor(ending.values)) & !is.function.call & !is.numeric.string & !has.quotes
+  is.numeric.string <- !is.na(suppressWarnings(as.numeric(col)))
+  to.quote <- (is.character(col) | is.factor(col)) & !is.function.call & !is.numeric.string & !has.quotes
 
-  ending.values[to.quote] <- sprintf('"%s"', ending.values[to.quote])
+  col[to.quote] <- sprintf('"%s"', col[to.quote])
 
-  res <- trimws(sprintf("%s %s %s", trimws(ending.values[1]), trimws(the.symbol), trimws(ending.values[2])))
+  res <- trimws(sprintf("%s %s %s", trimws(col[1]), trimws(the.symbol), trimws(col[2])))
   split.pieces <- trimws(strsplit(res, trimws(the.symbol))[[1]])
 
   for (u in 1:length(split.pieces)) {
@@ -1035,4 +998,276 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   }
 
   return(final.result)
+}
+
+
+
+
+#' Fast Stream Aggregation of Delimited Files via AWK
+#'
+#' High-performance aggregation and streaming of multiple tabular data files using an
+#' optimized AWK engine pipeline. This function parses columns, groups multi-file inputs,
+#' and calculates summarizations (like sum, mean, and standard deviation) natively in the shell
+#' before pulling structured aggregates back into R. It safely evaluates scalar mathematical transformations
+#' passed as strings (e.g., \code{"sqrt(col)"}).
+#'
+#' @param the.files A character vector containing paths to the targeted delimited text datasets.
+#' @param value.code A internal character tracking string for code generation mappings. Defaults to \code{"data"}.
+#' @param delim A character string defining the field separator delimiter within files. Defaults to \code{","}.
+#' @param num.batches An integer defining the processing grouping structure. Defaults to \code{1}.
+#' @param num.files.per.batch An integer specifying the maximum threshold of files targeted per concurrent process execution loop. Defaults to \code{1000}.
+#' @param summarize.with A named list specifying operations and target columns. Names must match supported functions:
+#' \code{"sum"}, \code{"mean"}, or \code{"sd"}. Elements can include raw columns or functional call strings like \code{"sqrt(price)"}. Defaults to \code{NULL}.
+#' @param return.as A character string defining what data is returned to the environment. Options include \code{"result"} (aggregated dataset), \code{"code"} (generated AWK commands), or \code{"all"} (a combined list of both). Defaults to \code{"result"}.
+#' @param group.by A character vector or list containing column names to act as the aggregation grouping dimensions. Defaults to \code{NULL}.
+#' @param path.to.awk A character string declaring the binary location execution path. Defaults to \code{"awk"}.
+#' @param drop A character or numeric vector defining column labels or indexes to drop from the parsing spectrum entirely. Defaults to \code{NULL}.
+#' @param file.header A character string tracking column identification titles when filenames are tracked. Defaults to \code{"file"}.
+#' @param include.filename A logical value indicating whether the tracking origin file string column should append to final structures. Defaults to \code{FALSE}.
+#' @param skip An integer, list, or character regex pattern. Controls metadata/line skipping configuration routines before row parsing evaluations trigger. Defaults to \code{0}.
+#' @param show.warnings A logical value determining whether underlying structural data warnings should surface during operation execution cycles. Defaults to \code{TRUE}.
+#' @param nrows A numeric ceiling threshold limiting output aggregation allocations. Defaults to \code{Inf}.
+#' @param return.data.table A logical value. If \code{TRUE}, returns a \code{data.table} object; otherwise, reverts the format to a standard base \code{data.frame}. Defaults to \code{TRUE}.
+#'
+#' @return Depending on the configuration argument passed to \code{return.as}, returns either a
+#' \code{data.table} (\code{data.frame} if \code{return.data.table = FALSE}), a character vector representing full
+#' system executable command configurations, or a combined metadata list package object.
+#'
+#' @export
+#'
+#' @importFrom data.table rbindlist setDF
+#'
+#' @examples
+#' \dontrun{
+#' # Aggregate data over multiple diamond batch CSV extractions
+#' agg_res <- aggregated.fread(
+#'   the.files = "diamonds.csv",
+#'   group.by = list("cut", "color"),
+#'   summarize.with = list(
+#'     mean = list("sqrt(price)", "carat"),
+#'     sd = "depth"
+#'   ),
+#'   return.as = "all"
+#' )
+#' print(agg_res$result)
+#' }
+aggregated.fread <- function(the.files, value.code = "data", delim = ",", num.batches = 1, num.files.per.batch = 1000, summarize.with = NULL, return.as = "result", group.by = NULL, path.to.awk = "awk", drop = NULL, file.header = "file", include.filename = FALSE, skip = 0, show.warnings = TRUE, nrows = Inf, return.data.table = TRUE) {
+  if (!requireNamespace("data.table", quietly = TRUE)) {
+    stop("Package 'data.table' is required but not installed.")
+  }
+  value.code <- "code"
+  value.all <- "all"
+
+  the.files <- normalizePath(the.files)
+  the.files <- the.files[file.exists(the.files)]
+  total.files <- length(the.files)
+
+  if (total.files == 0) {
+    stop("No existing files were found.")
+  }
+
+  if (!is.numeric(num.files.per.batch) || num.files.per.batch < 1) {
+    num.files.per.batch <- 1000
+  }
+
+  metadata.skip <- 0
+  data.skip <- 0
+  if (is.list(skip)) {
+    if (!is.null(skip$skip.data.rows)) {
+      data.skip <- skip$skip.data.rows
+    }
+    if (!is.null(skip$skip.metadata.rows)) {
+      metadata.skip <- skip$skip.metadata.rows
+      if (is.character(metadata.skip)) {
+        preview.lines <- readLines(the.files[1], n = 100, warn = FALSE)
+        match.index <- which(grepl(metadata.skip, preview.lines))[1]
+
+        if (is.na(match.index)) {
+          stop(sprintf("The skip pattern '%s' was not found in the file.", metadata.skip))
+        }
+        metadata.skip <- match.index - 1
+      }
+    }
+  } else if (is.character(skip)) {
+    preview.lines <- readLines(the.files[1], n = 100, warn = FALSE)
+    match.index <- which(grepl(skip, preview.lines))[1]
+
+    if (is.na(match.index)) {
+      stop(sprintf("The skip pattern '%s' was not found in the file.", skip))
+    }
+    metadata.skip <- match.index - 1
+  } else if (is.numeric(skip)) {
+    metadata.skip <- skip
+  }
+  first.file.con <- file(the.files[1], "r")
+  on.exit(close(first.file.con), add = TRUE)
+  if (metadata.skip > 0) {
+    readLines(first.file.con, n = metadata.skip)
+  }
+  header.line <- readLines(first.file.con, n = 1)
+
+  all.variables <- unlist(strsplit(header.line, split = delim, fixed = TRUE))
+  all.variables <- gsub('^"|"$', "", all.variables)
+
+  skip.limit <- data.skip + 1 + metadata.skip
+  if (!is.null(drop)) {
+    if (is.numeric(drop)) {
+      drop <- all.variables[drop]
+    }
+    the.variables <- the.variables[!(the.variables %in% drop)]
+  }
+
+  if (length(the.variables) == 0) {
+    stop("All variables were dropped.")
+  }
+
+  w <- which(all.variables %in% the.variables)
+  column.names.awk <- paste(sprintf("$%d", w), collapse = ",")
+  num.batches <- ceiling(total.files / num.files.per.batch)
+  awk.statements <- character(length = num.batches)
+  expanded.statements <- character(length = num.batches)
+  list.data <- list()
+
+  if (is.null(path.to.awk) && .Platform$OS.type == "windows") {
+    path.to.awk <- find.awk.binary()
+  } else {
+    path.to.awk <- "awk"
+  }
+
+  if (is.list(group.by)) {
+    group.by <- unlist(group.by)
+  }
+  group.idx <- which(all.variables %in% group.by)
+  group.awk <- sprintf("$%d", group.idx)
+  group.awk <- paste(group.awk, collapse = " FS ")
+  awk.body.statements <- character()
+  awk.end.prints <- character()
+  header.names <- c(group.by)
+
+  if (is.list(summarize.with)) {
+    for (func in names(summarize.with)) {
+      cols <- summarize.with[[func]]
+
+      for (col in cols) {
+        math.func <- FALSE
+        is.function.call <- grepl(pattern = "^[A-Za-z0-9_.]+\\s*\\(.*\\)$", x = trimws(col))
+        has.quotes <- grepl("^['\"].*['\"]$", trimws(col))
+        if (is.function.call && !has.quotes) {
+          math.func <- TRUE
+          pattern_both <- "^([A-Za-z0-9_.]+)\\s*\\(\\s*([A-Za-z0-9_.]+)\\s*\\)$"
+
+          matches <- regexec(pattern_both, trimws(col))
+          extracted <- regmatches(trimws(col), matches)[[1]]
+
+          math.func.name <- extracted[2]
+          col <- extracted[3]
+        }
+        col.idx <- which(all.variables == col)
+        if (length(col.idx) == 0) stop(sprintf("Column '%s' not found.", col))
+
+        col.awk <- sprintf("$%d", col.idx)
+        if (math.func) {
+          col.awk <- paste0(math.func.name, "(", col.awk, ")")
+          header.names <- c(header.names, paste(func, math.func.name, col, sep = "_"))
+        } else {
+          header.names <- c(header.names, paste(func, col, sep = "_"))
+        }
+
+        var_prefix <- paste(func, col.idx, sep = "_")
+
+
+        if (func == "sum") {
+          awk.body.statements <- c(
+            awk.body.statements,
+            sprintf("sum_%s[%s] += %s;", var_prefix, group.awk, col.awk)
+          )
+          awk.end.prints <- c(
+            awk.end.prints,
+            sprintf("sum_%s[i]", var_prefix)
+          )
+        } else if (func == "mean") {
+          awk.body.statements <- c(
+            awk.body.statements,
+            sprintf("sum_%s[%s] += %s;", var_prefix, group.awk, col.awk),
+            sprintf("count_%s[%s]++;", var_prefix, group.awk)
+          )
+          awk.end.prints <- c(
+            awk.end.prints,
+            sprintf("(sum_%s[i] / count_%s[i])", var_prefix, var_prefix)
+          )
+        } else if (func == "sd") {
+          awk.body.statements <- c(
+            awk.body.statements,
+            sprintf("sum_%s[%s] += %s;", var_prefix, group.awk, col.awk),
+            sprintf("sumsq_%s[%s] += (%s * %s);", var_prefix, group.awk, col.awk, col.awk),
+            sprintf("count_%s[%s]++;", var_prefix, group.awk)
+          )
+
+          num_str <- sprintf("(sumsq_%s[i] - (sum_%s[i]*sum_%s[i])/count_%s[i])", var_prefix, var_prefix, var_prefix, var_prefix)
+          safe_num_str <- sprintf("(%s < 0 ? 0 : %s)", num_str, num_str)
+
+          sd_formula <- sprintf(
+            "(count_%s[i] > 1 ? sqrt(%s / (count_%s[i] - 1)) : \"NA\")",
+            var_prefix, safe_num_str, var_prefix
+          )
+          awk.end.prints <- c(awk.end.prints, sd_formula)
+        }
+      }
+    }
+  }
+
+  body.string <- paste(awk.body.statements, collapse = " ")
+  print.string <- paste(awk.end.prints, collapse = '","')
+
+  first_func <- names(summarize.with)[1]
+  first_col_raw <- summarize.with[[first_func]][[1]]
+
+  if (grepl("^[A-Za-z0-9_.]+\\s*\\(.*\\)$", trimws(first_col_raw))) {
+    first_col_clean <- gsub("^[A-Za-z0-9_.]+\\s*\\(\\s*([A-Za-z0-9_.]+)\\s*\\)$", "\\1", trimws(first_col_raw))
+  } else {
+    first_col_clean <- first_col_raw
+  }
+
+  first_col_idx <- which(all.variables == first_col_clean)
+  loop_array_name <- sprintf("count_%s_%d", first_func, first_col_idx)
+
+  if (first_func == "sum") {
+    loop_array_name <- sprintf("sum_%s_%d", first_func, first_col_idx)
+  }
+
+  awk.script.content <- sprintf(
+    'BEGIN { FS="%s"; OFS="," } FNR <= %s { next } { %s } END { for(i in %s) print i, %s }',
+    delim, skip.limit, body.string, loop_array_name, print.string
+  )
+  outputs <- execute.awk.stream(
+    awk.script.content = awk.script.content, the.files = the.files, value.code, header.names, include.filename, num.batches, num.files.per.batch, path.to.awk, total.files, show.warnings, nrows, file.header, return.as
+  )
+  list.data <- outputs$list.data
+  expanded.statements <- outputs$expanded.statements
+  if (return.as == value.code) {
+    res <- expanded.statements
+  }
+
+  if (return.as != value.code) {
+    the.result <- rbindlist(l = list.data, fill = T)
+    if (nrows < nrow(the.result)) {
+      the.result <- the.result[1:nrows, ]
+    }
+    if (return.data.table == FALSE) {
+      setDF(the.result)
+    }
+
+    if (return.as == value.all) {
+      res <- list(
+        result = the.result,
+        code = expanded.statements
+      )
+    }
+
+    if (return.as != value.all) {
+      res <- the.result
+    }
+  }
+
+  return(res)
 }

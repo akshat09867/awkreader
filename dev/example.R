@@ -195,13 +195,13 @@ f1 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500", include.f
 print(f1)
 f2 <- filtered.fread(the.files = tmp.file, the.filter = "Price > 500 & Quantity==100 & In_Stock==FALSE", include.filename = F, skip = list(skip.data.rows = 2, skip.metadata.rows = 5), return.as = "all")
 print(f2)
-## ---------------------------------NO HEADER-----------------------
+# ---------------------------------NO HEADER-----------------------
 # f3 <- filtered.fread(the.files = tmp.file, header = FALSE, the.filter = "V5==TRUE", include.filename = F, skip = 5, drop = c("V1", "V2", "V4"), return.as = "all")
 # print(f3)
 # f4 <- pattern.fread(the.files = tmp.file, the.patterns = c(84, "H"), connectors = c("and"), include.filename = T, header = FALSE, skip = 5, show.warnings = F)
 # print(f4)
 
-## Demonstrates Maths Functions
+# Demonstrates Maths Functions
 
 M1 <- filtered.fread(the.files = the.files, the.filter = "rating < log(target_rating)", include.filename = F, return.as = "all")
 print(head(M1))
@@ -212,9 +212,17 @@ print(head(M2))
 M3 <- filtered.fread(the.files = the.files, the.filter = "log(rating) > 1.2 & item %nin% two.items", return.as = "all")
 print(head(M3))
 
-M4 <- filtered.fread(the.files = the.files, header = FALSE, the.filter = "V2 == 'sFFbD3fA0Jsvs7Ic' & V3 >= sqrt(log(V3))", return.as = "all", include.filename = F)
+M4 <- filtered.fread(the.files = the.files, the.filter = "item == 'sFFbD3fA0Jsvs7Ic' & rating >= sqrt(log(rating))", return.as = "all", include.filename = F, skip = 0)
 print(head(M4))
 
 
 vc <- filtered.fread(the.files = "~/Downloads/diamonds.csv", the.filter = "price > 1000 & color %in% c('E', 'F')", skip = list(skip.data.rows = 100), return.as = "all")
 print(head(vc))
+
+
+agg1 <- aggregated.fread(the.files = the.files, group.by = "user", summarize.with = list(mean = c("rating"), sd = c("rating", "item")), include.filename = FALSE, return.as = "all")
+print(agg1)
+agg2 <- aggregated.fread(the.files = the.files, group.by = list("user"), summarize.with = list(mean = c("rating"), sum = c("item", "rating"), sd = "log(rating)"), include.filename = FALSE, return.as = "all")
+print(agg2)
+agg3 <- aggregated.fread(the.files = "diamonds.csv", group.by = list("cut", "color"), summarize.with = list(mean = list("sqrt(price)", "log(z)"), sd = "x"), include.filename = FALSE, return.as = "all")
+print(agg3)

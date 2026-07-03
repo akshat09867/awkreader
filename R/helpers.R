@@ -94,3 +94,63 @@ find.awk.binary <- function() {
     call. = FALSE
   )
 }
+
+#' Execute AWK Script over Batches of Files (Internal Engine)
+#'
+#' An internal helper function that splits file processing into batches, constructs
+#' systemic shell commands to invoke AWK, and streams the processed text strings
+#' back into R via \code{data.table::fread}.
+#'
+#' @param awk.script.content A character string containing the raw body of the AWK script logic.
+#' @param the.files A character vector of normalized paths to the target files.
+#' @param value.code A character string indicating the identifier for code-only return mode.
+#' @param header.names A character vector of column names to assign to the resulting dataset.
+#' @param include.filename A logical value indicating whether to append the source filename tracking column.
+#' @param num.batches An integer specifying the total number of batches to chunk files into.
+#' @param num.files.per.batch An integer specifying the maximum number of files processed per AWK execution window.
+#' @param path.to.awk A character string designating the system path or command name for the AWK binary.
+#' @param total.files An integer tracking the total count of valid files to process.
+#' @param show.warnings A logical value. If \code{FALSE}, wraps the internal engine reading in \code{suppressWarnings}.
+#' @param nrows A numeric value restricting the maximum number of rows to read per batch chunk.
+#' @param file.header A character string establishing the column header name for file origin logging.
+#' @param return.as A character string controlling the return type format (\code{"result"}, \code{"code"}, or \code{"all"}).
+#'
+#' @return A named list containing two elements:
+#' \item{list.data}{A list of data tables containing parsed chunk outputs.}
+#' \item{expanded.statements}{A character vector containing the raw shell strings passed to the system command pipeline.}
+#'
+#' @importFrom data.table fread setnames
+#' @keywords internal
+execute.awk.stream <- function(awk.script.content, the.files, value.code, header.names, include.filename, num.batches, num.files.per.batch, path.to.awk, total.files, show.warnings, nrows, file.header, return.as) {
+  awk.statements <- character(length = num.batches)
+  expanded.statements <- character(length = num.batches)
+  list.data <- list()
+  temp.script <- tempfile(fileext = ".awk")
+  writeLines(awk.script.content, con = temp.script)
+  on.exit(unlink(temp.script), add = TRUE)
+
+  for (i in 1:num.batches) {
+    batch.files <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
+    pasted.file.names <- paste(shQuote(batch.files), collapse = " ")
+    awk.statements[i] <- sprintf("%s -f %s %s", path.to.awk, shQuote(normalizePath(temp.script, mustWork = FALSE)), pasted.file.names)
+    expanded.statements[i] <- sprintf("%s '%s' %s", path.to.awk, awk.script.content, pasted.file.names)
+    if (return.as != value.code) {
+      if (show.warnings == TRUE) {
+        batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ",")
+      } else {
+        suppressWarnings(batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ","))
+      }
+      if (nrow(batch.data) > 0) {
+        if (!include.filename) {
+          setnames(batch.data, header.names)
+        } else {
+          setnames(batch.data, c(header.names, file.header))
+        }
+      }
+      list.data[[i]] <- batch.data
+    }
+  }
+
+
+  return(list(list.data = list.data, expanded.statements = expanded.statements))
+}
