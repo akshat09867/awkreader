@@ -14,7 +14,6 @@ aggregated.fread(
   return.as = "result",
   group.by = NULL,
   path.to.awk = "awk",
-  drop = NULL,
   file.header = "file",
   include.filename = FALSE,
   skip = 0,
@@ -42,8 +41,6 @@ aggregated.fread(
 \item{group.by}{A character vector or list containing column names to act as the aggregation grouping dimensions. Defaults to \code{NULL}.}
 
 \item{path.to.awk}{A character string declaring the binary location execution path. Defaults to \code{"awk"}.}
-
-\item{drop}{A character or numeric vector defining column labels or indexes to drop from the parsing spectrum entirely. Defaults to \code{NULL}.}
 
 \item{file.header}{A character string tracking column identification titles when filenames are tracked. Defaults to \code{"file"}.}
 

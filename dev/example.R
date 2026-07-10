@@ -226,3 +226,7 @@ agg2 <- aggregated.fread(the.files = the.files, group.by = list("user"), summari
 print(agg2)
 agg3 <- aggregated.fread(the.files = "diamonds.csv", group.by = list("cut", "color"), summarize.with = list(mean = list("sqrt(price)", "log(z)"), sd = "x"), include.filename = FALSE, return.as = "all")
 print(agg3)
+
+
+# W <- filtered.fread(the.files = "inst/extdata/ratings_data/*.csv", the.filter = "item == 'sFFbD3fA0Jsvs7Ic'", return.as = "code", include.filename = F, skip = 0)
+# print(head(W))

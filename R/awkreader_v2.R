@@ -137,6 +137,7 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
   if (!is.logical(return.data.table)) {
     return.data.table <- TRUE
   }
+  the.files <- Sys.glob(the.files)
   the.files <- normalizePath(the.files)
   the.files <- the.files[file.exists(the.files)]
 
@@ -635,6 +636,7 @@ pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patt
   if (!is.logical(return.data.table)) {
     return.data.table <- TRUE
   }
+  the.files <- Sys.glob(the.files)
   the.files <- normalizePath(the.files)
   the.files <- the.files[file.exists(the.files)]
 
@@ -882,6 +884,7 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
   }
+  the.files <- Sys.glob(the.files)
   the.files <- normalizePath(the.files)
   the.files <- the.files[file.exists(the.files)]
   total.files <- length(the.files)
@@ -1001,8 +1004,6 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
 }
 
 
-
-
 #' Fast Stream Aggregation of Delimited Files via AWK
 #'
 #' High-performance aggregation and streaming of multiple tabular data files using an
@@ -1021,7 +1022,6 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
 #' @param return.as A character string defining what data is returned to the environment. Options include \code{"result"} (aggregated dataset), \code{"code"} (generated AWK commands), or \code{"all"} (a combined list of both). Defaults to \code{"result"}.
 #' @param group.by A character vector or list containing column names to act as the aggregation grouping dimensions. Defaults to \code{NULL}.
 #' @param path.to.awk A character string declaring the binary location execution path. Defaults to \code{"awk"}.
-#' @param drop A character or numeric vector defining column labels or indexes to drop from the parsing spectrum entirely. Defaults to \code{NULL}.
 #' @param file.header A character string tracking column identification titles when filenames are tracked. Defaults to \code{"file"}.
 #' @param include.filename A logical value indicating whether the tracking origin file string column should append to final structures. Defaults to \code{FALSE}.
 #' @param skip An integer, list, or character regex pattern. Controls metadata/line skipping configuration routines before row parsing evaluations trigger. Defaults to \code{0}.
@@ -1051,13 +1051,13 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
 #' )
 #' print(agg_res$result)
 #' }
-aggregated.fread <- function(the.files, value.code = "data", delim = ",", num.batches = 1, num.files.per.batch = 1000, summarize.with = NULL, return.as = "result", group.by = NULL, path.to.awk = "awk", drop = NULL, file.header = "file", include.filename = FALSE, skip = 0, show.warnings = TRUE, nrows = Inf, return.data.table = TRUE) {
+aggregated.fread <- function(the.files, value.code = "data", delim = ",", num.batches = 1, num.files.per.batch = 1000, summarize.with = NULL, return.as = "result", group.by = NULL, path.to.awk = "awk", file.header = "file", include.filename = FALSE, skip = 0, show.warnings = TRUE, nrows = Inf, return.data.table = TRUE) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
   }
   value.code <- "code"
   value.all <- "all"
-
+  the.files <- Sys.glob(the.files)
   the.files <- normalizePath(the.files)
   the.files <- the.files[file.exists(the.files)]
   total.files <- length(the.files)
@@ -1110,19 +1110,7 @@ aggregated.fread <- function(the.files, value.code = "data", delim = ",", num.ba
   all.variables <- gsub('^"|"$', "", all.variables)
 
   skip.limit <- data.skip + 1 + metadata.skip
-  if (!is.null(drop)) {
-    if (is.numeric(drop)) {
-      drop <- all.variables[drop]
-    }
-    the.variables <- the.variables[!(the.variables %in% drop)]
-  }
 
-  if (length(the.variables) == 0) {
-    stop("All variables were dropped.")
-  }
-
-  w <- which(all.variables %in% the.variables)
-  column.names.awk <- paste(sprintf("$%d", w), collapse = ",")
   num.batches <- ceiling(total.files / num.files.per.batch)
   awk.statements <- character(length = num.batches)
   expanded.statements <- character(length = num.batches)
