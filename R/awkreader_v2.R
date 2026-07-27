@@ -1051,7 +1051,21 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
 #' )
 #' print(agg_res$result)
 #' }
-aggregated.fread <- function(the.files, value.code = "data", delim = ",", num.batches = 1, num.files.per.batch = 1000, summarize.with = NULL, return.as = "result", group.by = NULL, path.to.awk = "awk", file.header = "file", include.filename = FALSE, skip = 0, show.warnings = TRUE, nrows = Inf, return.data.table = TRUE) {
+aggregated.fread <- function(the.files,
+                             value.code = "data",
+                             delim = ",",
+                             num.batches = 1,
+                             num.files.per.batch = 1000,
+                             summarize.with = NULL,
+                             return.as = "result",
+                             group.by = NULL,
+                             path.to.awk = "awk",
+                             file.header = "file",
+                             include.filename = FALSE,
+                             skip = 0,
+                             show.warnings = TRUE,
+                             nrows = Inf,
+                             return.data.table = TRUE) {
 
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
@@ -1129,43 +1143,52 @@ aggregated.fread <- function(the.files, value.code = "data", delim = ",", num.ba
     }
   }
 
-  if (is.list(group.by)) {
-    group.by <- unlist(group.by)
-  }
-  group.idx <- which(all.variables %in% group.by)
-  if (length(group.idx) == 0) {
-    stop("At least one valid column must be specified in 'group.by' for aggregation.")
+  if (is.null(group.by)) {
+    group.awk <- '\"All_Data\"'
+    header.names <- character()
+  } else {
+    if (is.list(group.by)) {
+      group.by <- unlist(group.by)
+    }
+    group.idx <- which(all.variables %in% group.by)
+    if (length(group.idx) == 0) {
+      stop("At least one valid column must be specified in 'group.by', or leave it NULL to summarize the entire dataset.")
+    }
+    group.awk <- sprintf("$%d", group.idx)
+    group.awk <- paste(group.awk, collapse = " FS ")
+    header.names <- c(group.by)
   }
 
-  group.awk <- sprintf("$%d", group.idx)
-  group.awk <- paste(group.awk, collapse = " FS ")
   awk.body.statements <- c(sprintf("seen_groups[%s] = 1;", group.awk))
   awk.end.pre.prints <- character()
   awk.end.prints <- character()
-  header.names <- c(group.by)
+  needs.quicksort <- FALSE
 
   if (is.list(summarize.with)) {
     for (func in names(summarize.with)) {
       cols <- summarize.with[[func]]
-      func.clean <- tolower(trimws(func))
-            if (func.clean %in% c("n", "count", "sample_size", "samplesize", "n_obs")) {
-              func <- "n"
-            }
-            if (is.null(cols) || (is.logical(cols) && cols) || (is.character(cols) && length(cols) == 1 && cols == "")) {
-              cols <- "_group_count_"
-            }
 
+      func.clean <- tolower(trimws(func))
+      if (func.clean %in% c("n", "count", "sample_size", "samplesize", "n_obs")) {
+        func.clean <- "n"
+      }
+
+      if (is.null(cols) || (is.logical(cols) && cols) || (is.character(cols) && length(cols) == 1 && cols == "")) {
+        cols <- "_group_count_"
+      }
 
       for (col in cols) {
         col.trimmed <- trimws(col)
+
+        if (col.trimmed == "_group_count_") {
+          awk.body.statements <- c(awk.body.statements, sprintf("n_group[%s]++;", group.awk))
+          awk.end.prints <- c(awk.end.prints, "n_group[i]")
+          header.names <- c(header.names, "n")
+          next
+        }
+
         has.quotes <- grepl("^['\"].*['\"]$", col.trimmed)
         is.multi.var <- grepl(",", col.trimmed)
-        if (col.trimmed == "_group_count_") {
-                  awk.body.statements <- c(awk.body.statements, sprintf("n_group[%s]++;", group.awk))
-                  awk.end.prints <- c(awk.end.prints, "n_group[i]")
-                  header.names <- c(header.names, "n")
-                  next
-                }
 
         if (is.multi.var) {
           args <- sapply(strsplit(col.trimmed, ",")[[1]], trimws)
@@ -1211,11 +1234,11 @@ aggregated.fread <- function(the.files, value.code = "data", delim = ",", num.ba
 
           h1 <- if (math.func1) paste(math.func1.name, col1, sep = "_") else col1
           h2 <- if (math.func2) paste(math.func2.name, col2, sep = "_") else col2
-          header.names <- c(header.names, paste(func, h1, h2, sep = "_"))
+          header.names <- c(header.names, paste(func.clean, h1, h2, sep = "_"))
 
           p1 <- if (math.func1) paste0(math.func1.name, "_", col1.idx) else col1.idx
           p2 <- if (math.func2) paste0(math.func2.name, "_", col2.idx) else col2.idx
-          var.prefix <- paste(func, p1, p2, sep = "_")
+          var.prefix <- paste(func.clean, p1, p2, sep = "_")
 
         } else {
           math.func <- FALSE
@@ -1238,45 +1261,42 @@ aggregated.fread <- function(the.files, value.code = "data", delim = ",", num.ba
           col.awk <- sprintf("$%d", col.idx)
           if (math.func) {
             col.awk <- paste0(math.func.name, "(", col.awk, ")")
-            header.names <- c(header.names, paste(func, math.func.name, col.name, sep = "_"))
+            header.names <- c(header.names, paste(func.clean, math.func.name, col.name, sep = "_"))
           } else {
-            header.names <- c(header.names, paste(func, col.name, sep = "_"))
+            header.names <- c(header.names, paste(func.clean, col.name, sep = "_"))
           }
-          var.prefix <- paste(func, col.idx, sep = "_")
+          var.prefix <- paste(func.clean, col.idx, sep = "_")
         }
 
-        if (func == "count") {
+        if (func.clean == "n") {
           awk.body.statements <- c(awk.body.statements, sprintf("count_%s[%s]++;", var.prefix, group.awk))
           awk.end.prints <- c(awk.end.prints, sprintf("count_%s[i]", var.prefix))
 
-        } else if (func == "n") {
-                  awk.body.statements <- c(awk.body.statements, sprintf("count_%s[%s]++;", var.prefix, group.awk))
-                  awk.end.prints <- c(awk.end.prints, sprintf("count_%s[i]", var.prefix))
-                }
-        else if (func == "min") {
+        } else if (func.clean == "min") {
           awk.body.statements <- c(awk.body.statements, sprintf("if (!(%s in min_%s) || %s < min_%s[%s]) min_%s[%s] = %s;", group.awk, var.prefix, col.awk, var.prefix, group.awk, var.prefix, group.awk, col.awk))
           awk.end.prints <- c(awk.end.prints, sprintf("min_%s[i]", var.prefix))
 
-        } else if (func == "max") {
+        } else if (func.clean == "max") {
           awk.body.statements <- c(awk.body.statements, sprintf("if (!(%s in max_%s) || %s > max_%s[%s]) max_%s[%s] = %s;", group.awk, var.prefix, col.awk, var.prefix, group.awk, var.prefix, group.awk, col.awk))
           awk.end.prints <- c(awk.end.prints, sprintf("max_%s[i]", var.prefix))
 
-        } else if (func == "sum") {
+        } else if (func.clean == "sum") {
           awk.body.statements <- c(awk.body.statements, sprintf("sum_%s[%s] += %s;", var.prefix, group.awk, col.awk))
           awk.end.prints <- c(awk.end.prints, sprintf("sum_%s[i]", var.prefix))
 
-        } else if (func == "mean") {
+        } else if (func.clean == "mean") {
           awk.body.statements <- c(awk.body.statements, sprintf("sum_%s[%s] += %s;", var.prefix, group.awk, col.awk), sprintf("count_%s[%s]++;", var.prefix, group.awk))
           awk.end.prints <- c(awk.end.prints, sprintf("(count_%s[i] > 0 ? (sum_%s[i] / count_%s[i]) : \"NA\")", var.prefix, var.prefix, var.prefix))
 
-        } else if (func == "sd") {
+        } else if (func.clean == "sd") {
           awk.body.statements <- c(awk.body.statements, sprintf("sum_%s[%s] += %s;", var.prefix, group.awk, col.awk), sprintf("sumsq_%s[%s] += (%s * %s);", var.prefix, group.awk, col.awk, col.awk), sprintf("count_%s[%s]++;", var.prefix, group.awk))
           num.str <- sprintf("(sumsq_%s[i] - (sum_%s[i]*sum_%s[i])/count_%s[i])", var.prefix, var.prefix, var.prefix, var.prefix)
           safe_num.str <- sprintf("(%s < 0 ? 0 : %s)", num.str, num.str)
           sd.formula <- sprintf("(count_%s[i] > 1 ? sqrt(%s / (count_%s[i] - 1)) : \"NA\")", var.prefix, safe_num.str, var.prefix)
           awk.end.prints <- c(awk.end.prints, sd.formula)
 
-        } else if (func == "cor") {
+        } else if (func.clean == "cor") {
+          if (!is.multi.var) stop(sprintf("The '%s' function requires two comma-separated variables.", func))
           awk.body.statements <- c(awk.body.statements,
                                    sprintf("sum_x_%s[%s] += %s;", var.prefix, group.awk, col1.awk),
                                    sprintf("sum_y_%s[%s] += %s;", var.prefix, group.awk, col2.awk),
@@ -1291,22 +1311,19 @@ aggregated.fread <- function(the.files, value.code = "data", delim = ",", num.ba
           cor.formula <- sprintf("(count_%s[i] > 1 && %s > 0 && %s > 0 ? %s / sqrt(%s * %s) : \"NA\")", var.prefix, var_x, var_y, num.str, var_x, var_y)
           awk.end.prints <- c(awk.end.prints, cor.formula)
 
-        } else if (func == "median") {
+        } else if (func.clean == "median") {
+          needs.quicksort <- TRUE
           awk.body.statements <- c(awk.body.statements, sprintf("count_%s[%s]++;", var.prefix, group.awk), sprintf("val_%s[%s SUBSEP count_%s[%s]] = %s;", var.prefix, group.awk, var.prefix, group.awk, col.awk))
 
           pre.print <- paste0(
             sprintf("n_%s = count_%s[i]; ", var.prefix, var.prefix),
             sprintf("for(j=1; j<=n_%s; j++) t_%s[j]=val_%s[i SUBSEP j]; ", var.prefix, var.prefix, var.prefix),
-            sprintf("for(j=2; j<=n_%s; j++){ ", var.prefix),
-            sprintf("kval=t_%s[j]; k=j-1; ", var.prefix),
-            sprintf("while(k>0 && t_%s[k]>kval){ t_%s[k+1]=t_%s[k]; k--; } ", var.prefix, var.prefix, var.prefix),
-            sprintf("t_%s[k+1]=kval; ", var.prefix),
-            "} ",
-            sprintf("if(n_%s>0){ ", var.prefix),
-            sprintf("if(n_%s%%2==1) med_%s=t_%s[int(n_%s/2)+1]; ", var.prefix, var.prefix, var.prefix, var.prefix),
-            sprintf("else med_%s=(t_%s[n_%s/2]+t_%s[n_%s/2+1])/2.0; ", var.prefix, var.prefix, var.prefix, var.prefix, var.prefix),
+            sprintf("if(n_%s > 0){ ", var.prefix),
+            sprintf("  quicksort(t_%s, 1, n_%s); ", var.prefix, var.prefix),
+            sprintf("  if(n_%s %% 2 == 1) med_%s = t_%s[int(n_%s/2)+1]; ", var.prefix, var.prefix, var.prefix, var.prefix),
+            sprintf("  else med_%s = (t_%s[n_%s/2] + t_%s[n_%s/2+1]) / 2.0; ", var.prefix, var.prefix, var.prefix, var.prefix, var.prefix, var.prefix),
             "} else { ",
-            sprintf("med_%s=\"NA\"; ", var.prefix),
+            sprintf("  med_%s=\"NA\"; ", var.prefix),
             "} ",
             sprintf("delete t_%s;", var.prefix)
           )
@@ -1317,13 +1334,36 @@ aggregated.fread <- function(the.files, value.code = "data", delim = ",", num.ba
     }
   }
 
+  quicksort.func <- "
+  function quicksort(arr, left, right,   i, j, pivot, temp) {
+    if (left < right) {
+      i = left; j = right; pivot = arr[int((left + right) / 2)] + 0;
+      while (i <= j) {
+        while (arr[i] + 0 < pivot) i++;
+        while (arr[j] + 0 > pivot) j--;
+        if (i <= j) {
+          temp = arr[i]; arr[i] = arr[j]; arr[j] = temp;
+          i++; j--;
+        }
+      }
+      quicksort(arr, left, j);
+      quicksort(arr, i, right);
+    }
+  }"
+
   body.string <- paste(awk.body.statements, collapse = " ")
   pre.print.string <- paste(awk.end.pre.prints, collapse = " ")
   print.string <- paste(awk.end.prints, collapse = '","')
 
+  print.statement <- if (is.null(group.by)) {
+    paste("print", print.string)
+  } else {
+    paste("print i,", print.string)
+  }
+
   awk.script.content <- sprintf(
-    'BEGIN { FS="%s"; OFS="," } FNR <= %s { next } { %s } END { for(i in seen_groups) { %s print i, %s } }',
-    delim, skip.limit, body.string, pre.print.string, print.string
+    '%s BEGIN { FS="%s"; OFS="," } FNR <= %s { next } { %s } END { for(i in seen_groups) { %s %s } }',
+    if (needs.quicksort) quicksort.func else "", delim, skip.limit, body.string, pre.print.string, print.statement
   )
 
   outputs <- execute.awk.stream(

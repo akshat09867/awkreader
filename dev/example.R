@@ -220,19 +220,19 @@ vc <- filtered.fread(the.files = "~/Downloads/diamonds.csv", the.filter = "price
 print(head(vc))
 
 
+
+## --------------------AGGEGATION--------------------------------------------
+
 agg1 <- aggregated.fread(the.files = the.files, group.by = "user", summarize.with = list(mean = c("rating"),median= c("rating") ,sd = c("rating", "item")), include.filename = FALSE, return.as = "all")
 print(agg1)
 agg2 <- aggregated.fread(the.files = the.files, group.by = list("user"), summarize.with = list(mean = c("rating"), sum = c("item", "rating"), sd = "log(rating)"), include.filename = FALSE, return.as = "all")
 print(agg2)
-agg3 <- aggregated.fread(the.files = "diamonds.csv", group.by = list("cut", "color"), summarize.with = list(median = list("sqrt(price)", "log(z)"), sd = "x"), include.filename = FALSE, return.as = "all")
-print(agg3)
+# agg3 <- aggregated.fread(the.files = "diamonds.csv", group.by = list("cut", "color"), summarize.with = list(median = list("sqrt(price)", "log(z)"), sd = "x"), include.filename = FALSE, return.as = "all")
+# print(agg3)
 agg4 <- aggregated.fread(the.files = "diamonds.csv", group.by = list("cut", "color"), summarize.with = list(max = list("price"), min = "x"), include.filename = FALSE, return.as = "all")
 print(agg4)
 agg5 <- aggregated.fread(the.files = "diamonds.csv", group.by = list("cut", "color"), summarize.with = list(cor = "sqrt(price), log(price)", min = "x"), include.filename = FALSE, return.as = "all")
 print(agg5)
-# W <- filtered.fread(the.files = "inst/extdata/ratings_data/*.csv", the.filter = "item == 'sFFbD3fA0Jsvs7Ic'", return.as = "code", include.filename = F, skip = 0)
-# print(head(W))
-
 
 agg6 <- aggregated.fread(
   the.files = "diamonds.csv",
@@ -248,3 +248,15 @@ agg7 <- aggregated.fread(
   return.as = "all"
 )
 print(agg7)
+
+
+agg8 <- aggregated.fread(the.files = rep.int("~/Downloads/diamonds.csv", 2), summarize.with = list(median = list("price", "carat"), sd = list("carat"), sample_size = TRUE, median = list("price")), group.by = c("cut", "color"))
+print(agg8)
+
+##----------Wild Path Expansion-----------------
+# W <- filtered.fread(the.files = "inst/extdata/ratings_data/*.csv", the.filter = "item == 'sFFbD3fA0Jsvs7Ic'", return.as = "code", include.filename = F, skip = 0)
+# print(head(W))
+
+
+agg9 <- aggregated.fread(the.files = "~/Downloads/diamonds.csv", summarize.with = list(mean = list("price", "price"), median= list("price","price")))
+print(agg9)
