@@ -258,5 +258,5 @@ print(agg8)
 # print(head(W))
 
 
-agg9 <- aggregated.fread(the.files = "~/Downloads/diamonds.csv", summarize.with = list(mean = list("price", "price"), median= list("price","price")))
+agg9 <- aggregated.fread(the.files = "~/Downloads/diamonds.csv", summarize.with = list(mean = list("price", "price"), median= list("price","price")), sample.size.median = 56)
 print(agg9)

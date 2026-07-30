@@ -1065,6 +1065,7 @@ aggregated.fread <- function(the.files,
                              skip = 0,
                              show.warnings = TRUE,
                              nrows = Inf,
+                             sample.size.median = -1,
                              return.data.table = TRUE) {
 
   if (!requireNamespace("data.table", quietly = TRUE)) {
@@ -1162,7 +1163,7 @@ aggregated.fread <- function(the.files,
   awk.body.statements <- c(sprintf("seen_groups[%s] = 1;", group.awk))
   awk.end.pre.prints <- character()
   awk.end.prints <- character()
-  needs.quicksort <- FALSE
+  needs.psquare <- FALSE
 
   if (is.list(summarize.with)) {
     for (func in names(summarize.with)) {
@@ -1312,21 +1313,13 @@ aggregated.fread <- function(the.files,
           awk.end.prints <- c(awk.end.prints, cor.formula)
 
         } else if (func.clean == "median") {
-          needs.quicksort <- TRUE
-          awk.body.statements <- c(awk.body.statements, sprintf("count_%s[%s]++;", var.prefix, group.awk), sprintf("val_%s[%s SUBSEP count_%s[%s]] = %s;", var.prefix, group.awk, var.prefix, group.awk, col.awk))
-
-          pre.print <- paste0(
-            sprintf("n_%s = count_%s[i]; ", var.prefix, var.prefix),
-            sprintf("for(j=1; j<=n_%s; j++) t_%s[j]=val_%s[i SUBSEP j]; ", var.prefix, var.prefix, var.prefix),
-            sprintf("if(n_%s > 0){ ", var.prefix),
-            sprintf("  quicksort(t_%s, 1, n_%s); ", var.prefix, var.prefix),
-            sprintf("  if(n_%s %% 2 == 1) med_%s = t_%s[int(n_%s/2)+1]; ", var.prefix, var.prefix, var.prefix, var.prefix),
-            sprintf("  else med_%s = (t_%s[n_%s/2] + t_%s[n_%s/2+1]) / 2.0; ", var.prefix, var.prefix, var.prefix, var.prefix, var.prefix, var.prefix),
-            "} else { ",
-            sprintf("  med_%s=\"NA\"; ", var.prefix),
-            "} ",
-            sprintf("delete t_%s;", var.prefix)
+          needs.psquare <- TRUE
+          awk.body.statements <- c(
+            awk.body.statements,
+            sprintf("update_psquare(\"%s\", %s, %s, %d);", var.prefix, group.awk, col.awk, as.integer(sample.size.median))
           )
+
+          pre.print <- sprintf("med_%s = get_psquare_median(\"%s\", i); ", var.prefix, var.prefix)
           awk.end.pre.prints <- c(awk.end.pre.prints, pre.print)
           awk.end.prints <- c(awk.end.prints, sprintf("med_%s", var.prefix))
         }
@@ -1334,22 +1327,82 @@ aggregated.fread <- function(the.files,
     }
   }
 
-  quicksort.func <- "
-  function quicksort(arr, left, right,   i, j, pivot, temp) {
-    if (left < right) {
-      i = left; j = right; pivot = arr[int((left + right) / 2)] + 0;
-      while (i <= j) {
-        while (arr[i] + 0 < pivot) i++;
-        while (arr[j] + 0 > pivot) j--;
-        if (i <= j) {
-          temp = arr[i]; arr[i] = arr[j]; arr[j] = temp;
-          i++; j--;
+  psquare.func <- "
+  function update_psquare(v, g, x, cap,   key, cnt, i, j, k, d, d_sign, q_hat, tmp) {
+    key = v SUBSEP g;
+    if (cap > 0 && ps_cnt[key] >= cap) return;
+
+    cnt = ++ps_cnt[key];
+    if (cnt <= 5) {
+      ps_init[key, cnt] = x + 0;
+      if (cnt == 5) {
+        for (i = 1; i <= 5; i++) {
+          for (j = i + 1; j <= 5; j++) {
+            if (ps_init[key, i] > ps_init[key, j]) {
+              tmp = ps_init[key, i]; ps_init[key, i] = ps_init[key, j]; ps_init[key, j] = tmp;
+            }
+          }
+        }
+        for (i = 1; i <= 5; i++) {
+          ps_q[key, i] = ps_init[key, i];
+          ps_n[key, i] = i;
+        }
+        ps_np[key, 1] = 1; ps_np[key, 2] = 2; ps_np[key, 3] = 3; ps_np[key, 4] = 4; ps_np[key, 5] = 5;
+      }
+      return;
+    }
+
+    x = x + 0;
+    if (x < ps_q[key, 1]) { ps_q[key, 1] = x; k = 1; }
+    else if (x < ps_q[key, 2]) k = 1;
+    else if (x < ps_q[key, 3]) k = 2;
+    else if (x < ps_q[key, 4]) k = 3;
+    else if (x < ps_q[key, 5]) k = 4;
+    else { ps_q[key, 5] = x; k = 4; }
+
+    for (i = k + 1; i <= 5; i++) ps_n[key, i]++;
+
+    ps_np[key, 1] += 0;
+    ps_np[key, 2] += 0.25;
+    ps_np[key, 3] += 0.50;
+    ps_np[key, 4] += 0.75;
+    ps_np[key, 5] += 1.00;
+
+    for (i = 2; i <= 4; i++) {
+      d = ps_np[key, i] - ps_n[key, i];
+      if ((d >= 1 && ps_n[key, i+1] - ps_n[key, i] > 1) || (d <= -1 && ps_n[key, i-1] - ps_n[key, i] < -1)) {
+        d_sign = (d >= 0) ? 1 : -1;
+
+        q_hat = ps_q[key, i] + (d_sign / (ps_n[key, i+1] - ps_n[key, i-1])) * ((ps_n[key, i] - ps_n[key, i-1] + d_sign) * (ps_q[key, i+1] - ps_q[key, i]) / (ps_n[key, i+1] - ps_n[key, i]) + (ps_n[key, i-1] + d_sign - ps_n[key, i]) * (ps_q[key, i] - ps_q[key, i-1]) / (ps_n[key, i] - ps_n[key, i-1]));
+
+        if (ps_q[key, i-1] < q_hat && q_hat < ps_q[key, i+1]) {
+          ps_q[key, i] = q_hat;
+        } else {
+          ps_q[key, i] = ps_q[key, i] + d_sign * (ps_q[key, i + d_sign] - ps_q[key, i]) / (ps_n[key, i + d_sign] - ps_n[key, i]);
+        }
+        ps_n[key, i] += d_sign;
+      }
+    }
+  }
+
+  function get_psquare_median(v, g,   key, cnt, i, j, tmp) {
+    key = v SUBSEP g;
+    cnt = ps_cnt[key];
+    if (cnt == 0) return \"NA\";
+    if (cnt < 5) {
+      for (i = 1; i <= cnt; i++) {
+        for (j = i + 1; j <= cnt; j++) {
+          if (ps_init[key, i] > ps_init[key, j]) {
+            tmp = ps_init[key, i]; ps_init[key, i] = ps_init[key, j]; ps_init[key, j] = tmp;
+          }
         }
       }
-      quicksort(arr, left, j);
-      quicksort(arr, i, right);
+      if (cnt % 2 == 1) return ps_init[key, int(cnt/2) + 1];
+      else return (ps_init[key, cnt/2] + ps_init[key, cnt/2 + 1]) / 2.0;
     }
-  }"
+    return ps_q[key, 3];
+  }
+  "
 
   body.string <- paste(awk.body.statements, collapse = " ")
   pre.print.string <- paste(awk.end.pre.prints, collapse = " ")
@@ -1363,7 +1416,7 @@ aggregated.fread <- function(the.files,
 
   awk.script.content <- sprintf(
     '%s BEGIN { FS="%s"; OFS="," } FNR <= %s { next } { %s } END { for(i in seen_groups) { %s %s } }',
-    if (needs.quicksort) quicksort.func else "", delim, skip.limit, body.string, pre.print.string, print.statement
+    if (needs.psquare) psquare.func else "", delim, skip.limit, body.string, pre.print.string, print.statement
   )
 
   outputs <- execute.awk.stream(
