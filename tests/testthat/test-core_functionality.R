@@ -393,3 +393,101 @@ test_that("filtered.fread produces safe cross-platform shQuote formatting", {
   # Verify the quoted path is physically present in the execution string
   expect_true(grepl(expected_quoted_path, res[1], fixed = TRUE))
 })
+
+
+
+
+test_that(".resolve.files handles recursive and non-recursive directory discovery", {
+  # 1. Setup temporary directory structure
+  tmp_dir <- file.path(tempdir(), "test_resolve_dirs")
+  sub_dir <- file.path(tmp_dir, "subfolder")
+  dir.create(sub_dir, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(tmp_dir, recursive = TRUE))
+
+  f1 <- file.path(tmp_dir, "top.csv")
+  f2 <- file.path(sub_dir, "nested.csv")
+  file.create(f1, f2)
+
+  # Non-recursive should only find top.csv
+  res_non_rec <- .resolve.files(tmp_dir, recursive = FALSE)
+  expect_equal(length(res_non_rec), 1)
+  expect_equal(normalizePath(res_non_rec), normalizePath(f1))
+
+  # Recursive should find both files
+  res_rec <- .resolve.files(tmp_dir, recursive = TRUE)
+  expect_equal(length(res_rec), 2)
+  expect_true(all(normalizePath(c(f1, f2)) %in% normalizePath(res_rec)))
+})
+
+test_that(".resolve.files formats file.pattern flexibly (plain string, extension, wildcard, regex)", {
+  tmp_dir <- file.path(tempdir(), "test_resolve_patterns")
+  dir.create(tmp_dir, showWarnings = FALSE)
+  on.exit(unlink(tmp_dir, recursive = TRUE))
+
+  f_csv  <- file.path(tmp_dir, "data.csv")
+  f_txt  <- file.path(tmp_dir, "notes.txt")
+  f_json <- file.path(tmp_dir, "config.json")
+  file.create(f_csv, f_txt, f_json)
+
+  # Plain extension string: "csv"
+  res_plain <- .resolve.files(tmp_dir, file.pattern = "csv")
+  expect_equal(basename(res_plain), "data.csv")
+
+  # Dot extension: ".txt"
+  res_dot <- .resolve.files(tmp_dir, file.pattern = ".txt")
+  expect_equal(basename(res_dot), "notes.txt")
+
+  # Wildcard glob: "*.json"
+  res_glob <- .resolve.files(tmp_dir, file.pattern = "*.json")
+  expect_equal(basename(res_glob), "config.json")
+
+  # Explicit regex: "\\.(csv|txt)$"
+  res_regex <- .resolve.files(tmp_dir, file.pattern = "\\.(csv|txt)$")
+  expect_equal(length(res_regex), 2)
+  expect_true(all(c("data.csv", "notes.txt") %in% basename(res_regex)))
+})
+
+test_that(".resolve.files correctly handles mixed directory and explicit file paths", {
+  tmp_dir <- file.path(tempdir(), "test_resolve_mixed")
+  dir.create(tmp_dir, showWarnings = FALSE)
+  on.exit(unlink(tmp_dir, recursive = TRUE))
+
+  f_in_dir  <- file.path(tmp_dir, "in_dir.csv")
+  f_outside <- file.path(tempdir(), "outside.csv")
+  file.create(f_in_dir, f_outside)
+  on.exit(unlink(f_outside), add = TRUE)
+
+  mixed_input <- c(tmp_dir, f_outside)
+  res <- .resolve.files(mixed_input, file.pattern = "csv")
+
+  expect_equal(length(res), 2)
+  expect_true(all(normalizePath(c(f_in_dir, f_outside)) %in% normalizePath(res)))
+})
+
+test_that(".resolve.files deduplicates duplicate entries", {
+  tmp_file <- file.path(tempdir(), "dup_test.csv")
+  file.create(tmp_file)
+  on.exit(unlink(tmp_file))
+
+  # Pass the same file multiple times
+  res <- .resolve.files(c(tmp_file, tmp_file, tmp_file))
+  expect_equal(length(res), 1)
+})
+
+test_that(".resolve.files throws expected errors on empty or non-existent inputs", {
+  # Non-existent path
+  expect_error(
+    .resolve.files("non_existent_folder_xyz123"),
+    "No existing files or directories matched"
+  )
+
+  # Existing empty directory with pattern filter
+  tmp_dir <- file.path(tempdir(), "empty_dir")
+  dir.create(tmp_dir, showWarnings = FALSE)
+  on.exit(unlink(tmp_dir, recursive = TRUE))
+
+  expect_error(
+    .resolve.files(tmp_dir, file.pattern = "*.nonexistent_ext"),
+    "No valid files were found matching the specified criteria"
+  )
+})

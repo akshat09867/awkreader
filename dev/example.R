@@ -258,5 +258,10 @@ print(agg8)
 # print(head(W))
 
 
-agg9 <- aggregated.fread(the.files = "~/Downloads/diamonds.csv", summarize.with = list(mean = list("price", "price"), median= list("price","price")), sample.size.median = 56)
+agg9 <- aggregated.fread(the.files = "~/Downloads/diamonds.csv", file.pattern = ".csv",summarize.with = list(mean = list("price", "price"), median= list("price","price")), sample.size.median = 56)
 print(agg9)
+
+
+
+sa1 <- pattern.fread(the.files = the.files, the.patterns = c("8XKJD4", "0JFCj"), connectors = c("or"), file.pattern = ".csv", recursive = TRUE)
+print(sa1)

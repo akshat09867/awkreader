@@ -125,7 +125,7 @@ combined.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.var
 #'   the.variables = c("V1", "V3")
 #' )
 #' }
-filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim = ",", the.filter = NULL, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+filtered.fread <- function(the.files, path.to.awk = NULL, file.pattern=NULL, recursive=FALSE, header = TRUE, delim = ",", the.filter = NULL, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, and.symbol = "&", or.symbol = "|", in.symbol = "%in%", nin.symbol = "%nin%", show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
   }
@@ -137,11 +137,11 @@ filtered.fread <- function(the.files, path.to.awk = NULL, header = TRUE, delim =
   if (!is.logical(return.data.table)) {
     return.data.table <- TRUE
   }
-  the.files <- Sys.glob(the.files)
-  the.files <- normalizePath(the.files)
-  the.files <- the.files[file.exists(the.files)]
-
-  total.files <- length(the.files)
+  the.files <- .resolve.files(the.files, file.pattern = file.pattern, recursive = recursive)
+    total.files <- length(the.files)
+  if (total.files == 0) {
+    stop("No valid files were found matching the specified criteria.")
+  }
   metadata.skip <- 0
   data.skip <- 0
   if (is.list(skip)) {
@@ -619,7 +619,7 @@ translate.nin.statement <- function(nin.statement, the.variables, nin.symbol = "
 #'   connectors = "or"
 #' )
 #' }
-pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patterns = NULL, tf = TRUE, delim = ",", connectors = "or", the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patterns = NULL, file.pattern=NULL, recursive=FALSE, tf = TRUE, delim = ",", connectors = "or", the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
   }
@@ -636,15 +636,11 @@ pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patt
   if (!is.logical(return.data.table)) {
     return.data.table <- TRUE
   }
-  the.files <- Sys.glob(the.files)
-  the.files <- normalizePath(the.files)
-  the.files <- the.files[file.exists(the.files)]
-
-  total.files <- length(the.files)
-
-  if (total.files == 0) {
-    stop("No existing files were found.")
-  }
+  the.files <- .resolve.files(the.files, file.pattern = file.pattern, recursive = recursive)
+    total.files <- length(the.files)
+    if (total.files == 0) {
+      stop("No valid files were found matching the specified criteria.")
+    }
   metadata.skip <- 0
   data.skip <- 0
   if (is.list(skip)) {
@@ -876,7 +872,7 @@ pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patt
 #'   the.filter = "price > 10000"
 #' )
 #' }
-record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter = NULL,
+record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter = NULL,file.pattern=NULL, recursive=FALSE,
                          the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file",
                          num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv,
                          and.symbol = "&", or.symbol = "|", in.symbol = "%in%",
@@ -884,15 +880,11 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")
   }
-  the.files <- Sys.glob(the.files)
-  the.files <- normalizePath(the.files)
-  the.files <- the.files[file.exists(the.files)]
-  total.files <- length(the.files)
-
+  the.files <- .resolve.files(the.files, file.pattern = file.pattern, recursive = recursive)
+    total.files <- length(the.files)
   if (total.files == 0) {
-    stop("No existing files were found.")
+    stop("No valid files were found matching the specified criteria.")
   }
-
   if (!is.numeric(num.files.per.batch) || num.files.per.batch < 1) {
     num.files.per.batch <- 1000
   }
@@ -1054,6 +1046,8 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
 aggregated.fread <- function(the.files,
                              value.code = "data",
                              delim = ",",
+                             file.pattern=NULL,
+                             recursive=FALSE,
                              num.batches = 1,
                              num.files.per.batch = 1000,
                              summarize.with = NULL,
@@ -1075,14 +1069,11 @@ aggregated.fread <- function(the.files,
   val.code.const <- "code"
   val.all.const <- "all"
 
-  the.files <- Sys.glob(the.files)
-  the.files <- normalizePath(the.files)
-  the.files <- the.files[file.exists(the.files)]
-  total.files <- length(the.files)
-
-  if (total.files == 0) {
-    stop("No existing files were found.")
-  }
+  the.files <- .resolve.files(the.files, file.pattern = file.pattern, recursive = recursive)
+    total.files <- length(the.files)
+    if (total.files == 0) {
+      stop("No valid files were found matching the specified criteria.")
+    }
 
   if (!is.numeric(num.files.per.batch) || num.files.per.batch < 1) {
     num.files.per.batch <- 1000

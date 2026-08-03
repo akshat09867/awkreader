@@ -154,3 +154,54 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
 
   return(list(list.data = list.data, expanded.statements = expanded.statements))
 }
+
+
+
+.resolve.files <- function(the.files, file.pattern = NULL, recursive = FALSE) {
+  expanded.files <- Sys.glob(the.files)
+
+  if (length(expanded.files) == 0) {
+    stop("No existing files or directories matched 'the.files'.")
+  }
+
+  if (!is.null(file.pattern) && nzchar(file.pattern)) {
+    if (grepl("\\*", file.pattern)) {
+      file.pattern <- glob2rx(file.pattern)
+    } else if (!grepl("[][!^$+|()]", file.pattern)) {
+      clean_ext <- gsub("^\\.", "", file.pattern)
+      file.pattern <- sprintf("\\.%s$", clean_ext)
+    }
+  }
+
+  is_dir <- dir.exists(expanded.files)
+  dir.paths <- expanded.files[is_dir]
+  file.paths <- expanded.files[!is_dir]
+
+  # 4. Discover files inside directories
+  discovered.files <- character(0)
+  if (length(dir.paths) > 0) {
+    discovered.files <- unlist(lapply(dir.paths, function(d) {
+      list.files(
+        path = d,
+        pattern = file.pattern,
+        full.names = TRUE,
+        recursive = recursive,
+        no.. = TRUE
+      )
+    }))
+  }
+
+  if (length(file.paths) > 0 && !is.null(file.pattern) && nzchar(file.pattern)) {
+    file.paths <- file.paths[grepl(file.pattern, basename(file.paths))]
+  }
+
+  all.files <- c(file.paths, discovered.files)
+  all.files <- normalizePath(all.files, mustWork = FALSE)
+  the.files <- unique(all.files[file.exists(all.files) & !dir.exists(all.files)])
+
+  if (length(the.files) == 0) {
+    stop("No valid files were found matching the specified criteria.")
+  }
+
+  return(the.files)
+}
