@@ -177,7 +177,6 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
   dir.paths <- expanded.files[is_dir]
   file.paths <- expanded.files[!is_dir]
 
-  # 4. Discover files inside directories
   discovered.files <- character(0)
   if (length(dir.paths) > 0) {
     discovered.files <- unlist(lapply(dir.paths, function(d) {

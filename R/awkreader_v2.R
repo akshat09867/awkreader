@@ -48,8 +48,8 @@ utils::globalVariables(c(":="))
 #'   skip = list(skip.metadata.rows = 2, skip.data.rows = 0)
 #' )
 #' }
-combined.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.variables = ".", include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
-  return(filtered.fread(the.files = the.files, path.to.awk = path.to.awk, the.filter = NULL, the.variables = the.variables, include.filename = include.filename, file.header = file.header, num.files.per.batch = num.files.per.batch, return.as = return.as, envir = envir, show.warnings = show.warnings, return.data.table = return.data.table, nrows = nrows, drop = drop))
+combined.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.variables = ".",file.pattern=NULL, recursive=FALSE ,include.filename = TRUE, skip = 0, file.header = "file", num.files.per.batch = 1000, return.as = "result", envir = .GlobalEnv, show.warnings = FALSE, return.data.table = TRUE, nrows = Inf, drop = NULL, ...) {
+  return(filtered.fread(the.files = the.files, path.to.awk = path.to.awk, the.filter = NULL, file.pattern = file.pattern, recursive = recursive,the.variables = the.variables, include.filename = include.filename, file.header = file.header, num.files.per.batch = num.files.per.batch, return.as = return.as, envir = envir, show.warnings = show.warnings, return.data.table = return.data.table, nrows = nrows, drop = drop))
 }
 
 #' Fast, Filtered Reading of Multiple Files via AWK
