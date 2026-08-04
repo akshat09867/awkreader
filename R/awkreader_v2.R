@@ -1019,7 +1019,7 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
 #' @param the.files A character vector containing paths to the targeted delimited text datasets.
 #' @param value.code A internal character tracking string for code generation mappings. Defaults to \code{"data"}.
 #' @param delim A character string defining the field separator delimiter within files. Defaults to \code{","}.
-#' #' @param file.pattern Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+#' @param file.pattern Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
 #'   wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).
 #' @param recursive Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.
 #' @param num.batches An integer defining the processing grouping structure. Defaults to \code{1}.
@@ -1034,6 +1034,8 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
 #' @param skip An integer, list, or character regex pattern. Controls metadata/line skipping configuration routines before row parsing evaluations trigger. Defaults to \code{0}.
 #' @param show.warnings A logical value determining whether underlying structural data warnings should surface during operation execution cycles. Defaults to \code{TRUE}.
 #' @param nrows A numeric ceiling threshold limiting output aggregation allocations. Defaults to \code{Inf}.
+#' @param sample.size.median Integer. Maximum number of observations per group used to compute streaming medians via the P-Square algorithm. A positive integer caps the sample size per group for
+#' faster execution on large datasets. Set to \code{-1} (default) or \code{0} to compute across all rows without sampling.
 #' @param return.data.table A logical value. If \code{TRUE}, returns a \code{data.table} object; otherwise, reverts the format to a standard base \code{data.frame}. Defaults to \code{TRUE}.
 #'
 #' @return Depending on the configuration argument passed to \code{return.as}, returns either a
@@ -1058,24 +1060,7 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
 #' )
 #' print(agg_res$result)
 #' }
-aggregated.fread <- function(the.files,
-                             value.code = "data",
-                             delim = ",",
-                             file.pattern=NULL,
-                             recursive=FALSE,
-                             num.batches = 1,
-                             num.files.per.batch = 1000,
-                             summarize.with = NULL,
-                             return.as = "result",
-                             group.by = NULL,
-                             path.to.awk = "awk",
-                             file.header = "file",
-                             include.filename = FALSE,
-                             skip = 0,
-                             show.warnings = TRUE,
-                             nrows = Inf,
-                             sample.size.median = -1,
-                             return.data.table = TRUE) {
+aggregated.fread <- function(the.files, value.code = "data", delim = ",", file.pattern=NULL, recursive=FALSE, num.batches = 1, num.files.per.batch = 1000, summarize.with = NULL, return.as = "result", group.by = NULL, path.to.awk = "awk", file.header = "file", include.filename = FALSE, skip = 0, show.warnings = TRUE, nrows = Inf, sample.size.median = -1, return.data.table = TRUE) {
 
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Package 'data.table' is required but not installed.")

@@ -156,7 +156,23 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
 }
 
 
-
+#' Resolve and Filter Target File Paths
+#'
+#' Internal helper to resolve directory paths, glob patterns, and file vectors
+#' into a clean, deduplicated vector of validated file paths.
+#'
+#' @param the.files Character vector. File paths, directory paths, or glob patterns.
+#' @param file.pattern Optional character string to filter file names when directories
+#'   are processed. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+#'   wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}).
+#'   Default is \code{NULL}.
+#' @param recursive Logical. Should directory searches recurse into subdirectories?
+#'   Default is \code{FALSE}.
+#'
+#' @return A character vector of unique, normalized, verified existing file paths.
+#'
+#' @importFrom utils glob2rx
+#' @noRd
 .resolve.files <- function(the.files, file.pattern = NULL, recursive = FALSE) {
   expanded.files <- Sys.glob(the.files)
 

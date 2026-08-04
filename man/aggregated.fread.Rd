@@ -30,8 +30,9 @@ aggregated.fread(
 
 \item{value.code}{A internal character tracking string for code generation mappings. Defaults to \code{"data"}.}
 
-\item{delim}{A character string defining the field separator delimiter within files. Defaults to \code{","}.
-#' @param file.pattern Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+\item{delim}{A character string defining the field separator delimiter within files. Defaults to \code{","}.}
+
+\item{file.pattern}{Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
 wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).}
 
 \item{recursive}{Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.}
@@ -58,6 +59,9 @@ wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}
 \item{show.warnings}{A logical value determining whether underlying structural data warnings should surface during operation execution cycles. Defaults to \code{TRUE}.}
 
 \item{nrows}{A numeric ceiling threshold limiting output aggregation allocations. Defaults to \code{Inf}.}
+
+\item{sample.size.median}{Integer. Maximum number of observations per group used to compute streaming medians via the P-Square algorithm. A positive integer caps the sample size per group for
+faster execution on large datasets. Set to \code{-1} (default) or \code{0} to compute across all rows without sampling.}
 
 \item{return.data.table}{A logical value. If \code{TRUE}, returns a \code{data.table} object; otherwise, reverts the format to a standard base \code{data.frame}. Defaults to \code{TRUE}.}
 }
