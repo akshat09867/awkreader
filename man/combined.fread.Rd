@@ -9,6 +9,8 @@ combined.fread(
   path.to.awk = NULL,
   header = TRUE,
   the.variables = ".",
+  file.pattern = NULL,
+  recursive = FALSE,
   include.filename = TRUE,
   skip = 0,
   file.header = "file",
@@ -32,6 +34,11 @@ the function attempts to invoke a global system call to \code{"awk"}.}
 
 \item{the.variables}{A character vector specifying which columns to retain. Use \code{"."} (default)
 to retain all columns.}
+
+\item{file.pattern}{Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).}
+
+\item{recursive}{Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.}
 
 \item{include.filename}{A logical value indicating whether to include a source file tracking column
 in the returned dataset. Default is \code{TRUE}.}

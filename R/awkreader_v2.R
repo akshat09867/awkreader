@@ -11,6 +11,9 @@ utils::globalVariables(c(":="))
 #' @param header A logical value indicating whether the target files contain a header row. Default is \code{TRUE}.
 #' @param the.variables A character vector specifying which columns to retain. Use \code{"."} (default)
 #' to retain all columns.
+#' @param file.pattern Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+#'   wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).
+#' @param recursive Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.
 #' @param include.filename A logical value indicating whether to include a source file tracking column
 #' in the returned dataset. Default is \code{TRUE}.
 #' @param skip A numeric offset, a character regex pattern, or a structured list indicating lines to bypass.
@@ -61,6 +64,9 @@ combined.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.var
 #' @param the.files A character vector of file paths to process. Non-existent files are automatically filtered out.
 #' @param path.to.awk A character string specifying the path to the AWK binary. If \code{NULL} (default),
 #' the function attempts to invoke a global system call to \code{"awk"}.
+#' @param file.pattern Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+#'   wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).
+#' @param recursive Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.
 #' @param header A logical value indicating whether the target files contain a header row. Default is \code{TRUE}.
 #' If \code{FALSE}, columns are auto-assigned as \code{V1}, \code{V2}, etc.
 #' @param delim A character string specifying the column separator within the files. Default is \code{","}.
@@ -577,6 +583,9 @@ translate.nin.statement <- function(nin.statement, the.variables, nin.symbol = "
 #' the function attempts to invoke a global system call to \code{"awk"}.
 #' @param header A logical value indicating whether the target files contain a header row. Default is \code{TRUE}.
 #' @param the.patterns A character vector containing the regular expression patterns to match against data rows. Default is \code{NULL}.
+#' @param file.pattern Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+#'   wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).
+#' @param recursive Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.
 #' @param tf A logical value determining whether to include rows that match the patterns (\code{TRUE})
 #' or exclude rows that match them (\code{FALSE}). Default is \code{TRUE}.
 #' @param delim A character string specifying the column separator within the files. Default is \code{","}.
@@ -837,6 +846,9 @@ pattern.fread <- function(the.files, path.to.awk = NULL, header = TRUE, the.patt
 #' @param delim A character string specifying the column separator within the files. Default is \code{","}.
 #' @param the.filter A character string or unquoted expression outlining the filtering logic to pass to AWK.
 #' Default is \code{NULL} (counts all records matching layout rules).
+#' @param file.pattern Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+#'   wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).
+#' @param recursive Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.
 #' @param the.variables A character vector specifying active evaluation columns. Default is \code{"."}.
 #' @param include.filename A logical value indicating whether to retain tracking metrics grouped by individual files. Default is \code{TRUE}.
 #' @param skip A numeric offset, a character regex pattern, or a structured list indicating lines to bypass.
@@ -1007,6 +1019,9 @@ record.count <- function(the.files, path.to.awk = NULL, delim = ",", the.filter 
 #' @param the.files A character vector containing paths to the targeted delimited text datasets.
 #' @param value.code A internal character tracking string for code generation mappings. Defaults to \code{"data"}.
 #' @param delim A character string defining the field separator delimiter within files. Defaults to \code{","}.
+#' #' @param file.pattern Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+#'   wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).
+#' @param recursive Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.
 #' @param num.batches An integer defining the processing grouping structure. Defaults to \code{1}.
 #' @param num.files.per.batch An integer specifying the maximum threshold of files targeted per concurrent process execution loop. Defaults to \code{1000}.
 #' @param summarize.with A named list specifying operations and target columns. Names must match supported functions:

@@ -9,6 +9,8 @@ pattern.fread(
   path.to.awk = NULL,
   header = TRUE,
   the.patterns = NULL,
+  file.pattern = NULL,
+  recursive = FALSE,
   tf = TRUE,
   delim = ",",
   connectors = "or",
@@ -35,6 +37,11 @@ the function attempts to invoke a global system call to \code{"awk"}.}
 \item{header}{A logical value indicating whether the target files contain a header row. Default is \code{TRUE}.}
 
 \item{the.patterns}{A character vector containing the regular expression patterns to match against data rows. Default is \code{NULL}.}
+
+\item{file.pattern}{Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).}
+
+\item{recursive}{Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.}
 
 \item{tf}{A logical value determining whether to include rows that match the patterns (\code{TRUE})
 or exclude rows that match them (\code{FALSE}). Default is \code{TRUE}.}

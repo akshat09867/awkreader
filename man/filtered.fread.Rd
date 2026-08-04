@@ -7,6 +7,8 @@
 filtered.fread(
   the.files,
   path.to.awk = NULL,
+  file.pattern = NULL,
+  recursive = FALSE,
   header = TRUE,
   delim = ",",
   the.filter = NULL,
@@ -33,6 +35,11 @@ filtered.fread(
 
 \item{path.to.awk}{A character string specifying the path to the AWK binary. If \code{NULL} (default),
 the function attempts to invoke a global system call to \code{"awk"}.}
+
+\item{file.pattern}{Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).}
+
+\item{recursive}{Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.}
 
 \item{header}{A logical value indicating whether the target files contain a header row. Default is \code{TRUE}.
 If \code{FALSE}, columns are auto-assigned as \code{V1}, \code{V2}, etc.}

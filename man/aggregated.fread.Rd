@@ -8,6 +8,8 @@ aggregated.fread(
   the.files,
   value.code = "data",
   delim = ",",
+  file.pattern = NULL,
+  recursive = FALSE,
   num.batches = 1,
   num.files.per.batch = 1000,
   summarize.with = NULL,
@@ -19,6 +21,7 @@ aggregated.fread(
   skip = 0,
   show.warnings = TRUE,
   nrows = Inf,
+  sample.size.median = -1,
   return.data.table = TRUE
 )
 }
@@ -27,7 +30,11 @@ aggregated.fread(
 
 \item{value.code}{A internal character tracking string for code generation mappings. Defaults to \code{"data"}.}
 
-\item{delim}{A character string defining the field separator delimiter within files. Defaults to \code{","}.}
+\item{delim}{A character string defining the field separator delimiter within files. Defaults to \code{","}.
+#' @param file.pattern Optional character string to filter file names when \code{the.files} contains directory paths. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
+wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}). Default is \code{NULL} (includes all files).}
+
+\item{recursive}{Logical. Should directory searches recurse into subdirectories when \code{the.files} contains directory paths? Default is \code{FALSE}.}
 
 \item{num.batches}{An integer defining the processing grouping structure. Defaults to \code{1}.}
 

@@ -4,3 +4,5 @@
 ^benchmark_header_logic\.R$
 ^dev$
 ^diamonds\.csv$
+^doc$
+^Meta$
