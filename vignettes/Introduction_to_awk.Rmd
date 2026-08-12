@@ -24,13 +24,17 @@ Reading, aggregating, and subsetting data from files is a fundamental operation 
 
 The awkreader package is built on a translation of R code that produces coding statements in the AWK language.  This command-line code is sufficiently flexible to read multiple files, pre-filter the inputs, and search for patterns in the data.  AWK commands can be processed to read data using the **fread** function from the **data.table** package.  The awkreader package allows a user to specify simple inputs with a syntax familiar to users of R.  By translating the code, awkreader gives users access to some of the capabilities of programming in AWK without having to learn the language.
 
-The awkreader package introduces three new methods:
+The awkreader package introduces few new methods:
 
 * **combined.fread**:  A method to read multiple files of the same structure.
 
 * **filtered.fread**:  A method to introduce filtering conditions that are written in R's syntax.  Any row of data that satisfy's the filter's logical test will be included.  This can be employed while reading multiple files of the same structure.
 
 * **pattern.fread**:  A method to search for one or more patterns in the files.  Any row that matches the combination of specified patterns will be included.  This method may also be applied in reading multiple files of the same structure.
+
+* **record.count**:  A method to count the total number of records across files without loading the full data into memory. Filtering conditions can be applied so that only rows satisfying the logical tests are counted.
+
+* **aggregated.fread**: A method for calculating summaries like sum, mean, median, etc., directly during the file-reading process. This allows for grouped aggregations across multiple files while drastically reducing memory overhead.
 
 These methods assume that the data in the files have a reasonably consistent structure.  The assumptions include:
 
@@ -48,9 +52,13 @@ The applications of the awkreader package can be quite beneficial in the followi
 
 * **Pattern Searching**:  Similarly, searching for patterns is a separate way of pre-filtering the data in the reading process.
 
+* **Record Counting**: When only the volume or frequency of data is needed, reading the entire dataset is inefficient. Pushing the counting operation to AWK saves time and memory.
+
+* **Summarizing data**: When the goal is to produce reporting metrics or grouped summaries, aggregating the data during the read step prevents memory bottlenecks and circumvents the need to build imperative staging tables.
+
 ## Data Files
 
-In order to demonstrate the capabilities of the awkreader package, we have posted the following files to **(fill in link)**:
+In order to demonstrate the capabilities of the awkreader package, we have posted the following files to **[ratings-data repository](https://drive.google.com/drive/folders/1QiVqV_HGhVWNrMFJcqPbKUz7jetw4anb)**:
 
 * **Ratings Data**:  This folder contains many files of simulated ratings.  Each file contains variables for the user's identifier, product's identifier, and an integer rating from 1 to 5.  The data are separated into individual files for each user. All of the files are comma separated values (CSV) files with the same headers and ordering of the variables.
 
@@ -58,7 +66,7 @@ In order to demonstrate the capabilities of the awkreader package, we have poste
 
 ## AWK and Operating Systems
 
-AWK is a command line programming language.  Some operating systems (e.g. Mac OS and Linux) include native installations of the program.  Windows operating systems require an installation of AWK to use the awkreader package.    These installations can vary somewhat in terms of their coding syntax.  As a result, awkreader's translations to AWK code differ based upon the operating system.  The coding examples will demonstrate the differences in the required specifications and the translations that are produced.
+AWK is a command line programming language.  Some operating systems (e.g. Mac OS and Linux) include native installations of the program.  Windows operating systems require an installation of AWK to use the awkreader package. These installations can vary somewhat in terms of their coding syntax.  As a result, awkreader's translations to AWK code differ based upon the operating system.  The coding examples will demonstrate the differences in the required specifications and the translations that are produced.
 
 ## Examples
 
@@ -125,7 +133,6 @@ combined.fread(the.files = the.files, nrows = 5, drop = c(1,3), include.filename
 combined.fread(the.files = the.files, nrows = 5, drop = c("user", "rating"), include.filename = F)
 ```
 
-
 Rather than outputting the data, the method can be specified to instead display the AWK statements that would read in the data as shell commands:
 
 ```{r }
@@ -137,14 +144,57 @@ It is also possible to return a list object including both the resulting data an
 ```{r }
 combined.fread(the.files = the.files, the.variables = c("item", "rating"), nrows = 5, return.as = "all")
 ```
+The methods also natively supports directory-level searches and file pattern matching (e.g., wildcards or extensions). This allows you to point combined.fread at an entire folder:
 
-A few caveats apply to the AWK coding statements that are generated:
+```{r}
+# Count records in all CSV files in the data directory
+combined.fread(the.files = data.path, file.pattern = "*.csv")
+```
+The file.pattern parameter accepts multiple types of inputs, such as simple extensions (".csv", "csv"), custom regex strings ("\\.csv$"), or wildcard expansions ("*.csv"). Alternatively, you can pass a wildcard path directly to the.files, which the function handles gracefully.
+
+If you want to search inside subfolders within the directory, you can set the recursive parameter to TRUE:
+
+```{r}
+combined.fread(the.files = data.path, file.pattern = "csv", recursive = TRUE)
+```
+When return.as = "all" or "code" is specified, the method will output the AWK scripts it generated to perform the counting:
+
+```{r}
+combined.fread(the.files = the.files, return.as = "code")
+```
+
+#### Skipping Unnecessary Rows
+Sometimes you might need to bypass a few rows before applying operations to your data. To handle this, the method provides the skip parameter, which flexibly accepts an integer, a character string, or a list:
+
+```{r}
+combined.fread(the.files = data.path, skip = 0)
+# combined.fread(the.files = data.path, skip = "pattern_to_match")
+```
+**Note on behavior:**
+
+**If an integer is provided:** The function blindly skips that many lines at the top of the file. Use this approach only when skipping file metadata, as the function will assume the row immediately following the skipped lines is your header.
+
+**If a character string is provided:** The function scans the first 100 lines of the file to find the first row matching that string. It then skips all preceding metadata rows, effectively treating the matched row as your header.
+
+Alternatively, you can provide a list to the skip parameter for precise, separate control over skipping data rows versus metadata rows. This explicit method automatically preserves the header in between:
+
+```{r}
+combined.fread(the.files = data.path, skip = list(skip.data.rows = 4, skip.metadata.rows = 0))
+```
+You can even mix types within this list. For instance, skip.metadata.rows can accept a character string to dynamically locate the header, while skip.data.rows uses an integer to skip a fixed number of data entries immediately following it.
+
+#### Delimiters
+To support various file types and increase versatility, you can specify custom delimiters via the delim parameter:
+
+```{r}
+combined.fread(the.files = data.path, delim = ",")
+```
+
+A couple of caveats apply to the AWK coding statements that are generated:
 
 * The column headers are separately added to the resulting data.  In this instance, directly running the AWK command will not produce the correct column headers alone.
 
 * The value of nrows is separately specified as part of data.table's fread method.  It is not directly included in the AWK coding statements.  When batching the data, an additional step is used in post-processing to limit the results to the number of rows.
-
-* When include.filename = TRUE and the filename includes spaces, the AWK code may spread the filename across multiple columns of data using the space as a delimiter.  In these circumstances, each method in the awkreader package includes a small cleanup procedure to properly reformat the filenames into a single column.
 
 ### Using filtered.fread
 
@@ -225,6 +275,13 @@ print(the.output$code[1:2])
 
 Some of the batches may include no relevant data that satisfies the.filter.  In those cases, a warning will be generated by data.table's fread command.  These warnings can be suppressed with show.warnings = FALSE.
 
+#### Headers
+Some datasets may not include a header row. To handle files without headers, set header = FALSE. The function will automatically assign default data.table column names (V1, V2, V3, ...). Any filter statements can then be written using these default names:
+
+```{r}
+filtered.fread(the.files = the.files, header = FALSE, the.filter = "V3==5", include.filename = F, drop = c("V1", "V2"), return.as = "all")
+```
+
 ### Using pattern.fread
 
 As a complement to applying logical filters, pattern matching may also be used as a means of extracting a subset of data read from multiple files.
@@ -264,4 +321,84 @@ Finally, we can turn to the Titanic data to search for specific patterns:
 ```{r }
 titanic.file <- system.file("extdata", "titanic.csv", package = "awkreader")
 pattern.fread(the.files = titanic.file, the.patterns = c("Female", "Child", "1st"), tf = c(T, T, F), connectors = c("or", "and"))
+```
+
+### Using record.count
+The record.count method allows you to quickly count the number of rows across multiple files without reading the actual dataset into memory. This is highly efficient when you only need volume metrics or want to check data size prior to a larger read.
+
+You can calculate a simple count of all records in the specified files:
+
+```{r}
+record.count(the.files = the.files)
+```
+Similar to filtered.fread, you can supply logical filters to count only the rows that satisfy specific criteria:
+
+```{r}
+record.count(the.files = the.files, the.filter = "rating == 5")
+```
+
+### Using aggregated.fread
+The aggregated.fread method pushes summary computations (such as means, sums, or medians) directly to the file-reading level. Instead of loading raw, row-level data into R and aggregating it afterward, the calculations are processed by AWK on the fly.
+
+You can compute metrics across specific variables, optionally grouping the output. For example, to calculate the mean and median ratings for each item:
+
+```{r}
+aggregated.fread(
+  the.files = the.files,
+  group.by = "item",
+  summarize.with = list(mean = "rating", median = "rating")
+)
+```
+You can seamlessly apply multiple grouping variables and aggregations in a single pass. AWK will calculate all specified metrics across the provided grouping variables:
+
+```{r}
+aggregated.fread(
+ the.files = the.files,
+ summarize.with = list(mean = list("rating"), sd = list("rating"), median = list("rating")),
+ group.by = c("user", "item")
+)
+```
+Additionally, you can calculate the sample size (number of observations) for each group:
+
+```{r}
+aggregated.fread(
+  the.files = the.files,
+  group.by = "item",
+  summarize.with = list(mean = "rating", sd = "rating", sample.size = TRUE)
+)
+```
+For convenience, the sample size parameter accepts multiple aliases: "n", "count", "sample_size", "samplesize", or "n_obs".
+
+You can also apply inline mathematical functions (those that can be evaluated row-by-row without storing the entire vector in memory) directly within the aggregation statements:
+
+```{r}
+aggregated.fread(
+  the.files = the.files,
+  group.by = "item",
+  summarize.with = list(mean = "sqrt(rating)", sd = "log(rating)")
+)
+```
+#### Computing Streaming Medians
+Calculating medians on massive, distributed datasets typically requires holding all values in memory. To optimize memory usage, aggregated.fread calculates medians using the streaming P-Square algorithm.
+
+You can restrict the maximum number of observations per group used by this algorithm via the sample.size.median parameter. A positive integer will cap the sample, speeding up calculation times on large files. The default is -1 (or 0), which means the algorithm will process every row without sampling limitations:
+
+```{r}
+aggregated.fread(
+  the.files = the.files,
+  group.by = "user",
+  summarize.with = list(median = "rating"),
+  sample.size.median = -1
+)
+```
+
+#### Using Correlation
+The syntax for correlation is slightly different from other metrics, as it requires exactly two variables to operate on:
+
+```{r}
+aggregated.fread(
+  the.files = the.files,
+  group.by = "user",
+  summarize.with = list(cor = "sqrt(item), log(item)")
+)
 ```
