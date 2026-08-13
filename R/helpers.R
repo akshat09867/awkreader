@@ -67,7 +67,11 @@ check.awk.availability <- function() {
 find.awk.binary <- function() {
   system_path <- Sys.which("awk")
   if (system_path != "") {
-    return(unname(system_path))
+    awk_path <- unname(system_path)
+    if (.Platform$OS.type == "windows") {
+      awk_path <- utils::shortPathName(awk_path)
+    }
+    return(awk_path)
   }
   if (.Platform$OS.type == "windows") {
     potential_dirs <- c(
