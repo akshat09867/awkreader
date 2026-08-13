@@ -67,11 +67,7 @@ check.awk.availability <- function() {
 find.awk.binary <- function() {
   system_path <- Sys.which("awk")
   if (system_path != "") {
-    awk_path <- unname(system_path)
-    if (.Platform$OS.type == "windows") {
-      awk_path <- utils::shortPathName(awk_path)
-    }
-    return(awk_path)
+    return(unname(system_path))
   }
   if (.Platform$OS.type == "windows") {
     potential_dirs <- c(
@@ -80,18 +76,15 @@ find.awk.binary <- function() {
       "C:/Program Files/Git",
       "C:/Program Files (x86)/Git"
     )
-
     possible_bin_paths <- c(
       paste0(potential_dirs, "/usr/bin/awk.exe"),
       paste0(potential_dirs, "/bin/awk.exe")
     )
-
     valid_paths <- possible_bin_paths[file.exists(possible_bin_paths)]
     if (length(valid_paths) > 0) {
       return(normalizePath(valid_paths[1]))
     }
   }
-
   stop(
     "AWK interpreter could not be automatically detected on your system PATH.\n",
     "Please ensure Rtools or Git is installed, or supply an explicit path.",
@@ -151,7 +144,9 @@ find.awk.binary <- function() {
 #'
 #' @importFrom data.table fread setnames
 #' @keywords internal
-execute.awk.stream <- function(awk.script.content, the.files, value.code, header.names, include.filename, num.batches, num.files.per.batch, path.to.awk, total.files, show.warnings, nrows, file.header, return.as) {
+execute.awk.stream <- function(awk.script.content, the.files, value.code, header.names, include.filename,
+                                num.batches, num.files.per.batch, path.to.awk, total.files, show.warnings,
+                                nrows, file.header, return.as) {
   awk.statements <- character(length = num.batches)
   expanded.statements <- character(length = num.batches)
   list.data <- list()
@@ -160,28 +155,32 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
   writeLines(awk.script.content, con = temp.script)
   on.exit(unlink(temp.script), add = TRUE)
 
-  if (.Platform$OS.type == "windows") {
-    if (file.exists(path.to.awk)) path.to.awk <- utils::shortPathName(path.to.awk)
-    safe.temp.script <- utils::shortPathName(normalizePath(temp.script, mustWork = FALSE))
+  is.windows <- .Platform$OS.type == "windows"
+
+  norm.awk.path    <- normalizePath(path.to.awk, mustWork = FALSE)
+  norm.temp.script <- normalizePath(temp.script, mustWork = FALSE)
+
+  if (is.windows) {
+    safe.awk.path    <- shQuote(norm.awk.path, type = "cmd")
+    safe.temp.script <- shQuote(norm.temp.script, type = "cmd")
   } else {
-    safe.temp.script <- shQuote(normalizePath(temp.script, mustWork = FALSE))
+    safe.awk.path    <- shQuote(norm.awk.path)
+    safe.temp.script <- shQuote(norm.temp.script)
   }
 
   for (i in 1:num.batches) {
     batch.files <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
+    norm.batch.files <- normalizePath(batch.files, mustWork = FALSE)
 
-    if (.Platform$OS.type == "windows") {
-      safe.batch.files <- utils::shortPathName(normalizePath(batch.files, mustWork = FALSE))
-      pasted.file.names <- paste(safe.batch.files, collapse = " ")
-
-      awk.statements[i] <- sprintf("%s -f %s %s", path.to.awk, safe.temp.script, pasted.file.names)
-      expanded.statements[i] <- sprintf("%s '%s' %s", path.to.awk, awk.script.content, pasted.file.names)
-
+    safe.batch.files <- if (is.windows) {
+      shQuote(norm.batch.files, type = "cmd")
     } else {
-      pasted.file.names <- paste(shQuote(batch.files), collapse = " ")
-      awk.statements[i] <- sprintf("%s -f %s %s", path.to.awk, safe.temp.script, pasted.file.names)
-      expanded.statements[i] <- sprintf("%s '%s' %s", path.to.awk, awk.script.content, pasted.file.names)
+      shQuote(norm.batch.files)
     }
+    pasted.file.names <- paste(safe.batch.files, collapse = " ")
+
+    awk.statements[i]      <- sprintf("%s -f %s %s", safe.awk.path, safe.temp.script, pasted.file.names)
+    expanded.statements[i] <- sprintf("%s '%s' %s", norm.awk.path, awk.script.content, pasted.file.names)
 
     if (return.as != value.code) {
       if (show.warnings == TRUE) {
