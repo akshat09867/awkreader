@@ -42,16 +42,49 @@ translate.in.statement.global <- function(in.statement, the.variables, in.symbol
 }
 
 
+#' Safely Quote Paths for Shell Execution Across OS Platforms
+#'
+#' @param path Character string representing a file or directory path.
+#' @return Properly formatted and quoted path string safe for command shell execution.
+#' @keywords internal
+quote_path <- function(path) {
+  if (is.null(path) || length(path) == 0 || !nzchar(path)) return(path)
+
+  if (!file.exists(path) && !grepl("[/\\\\]", path)) {
+    return(if (grepl(" ", path, fixed = TRUE)) shQuote(path) else path)
+  }
+
+  norm <- normalizePath(path, winslash = "/", mustWork = FALSE)
+
+  if (.Platform$OS.type == "windows") {
+    short <- utils::shortPathName(norm)
+    if (nzchar(short) && !grepl(" ", short, fixed = TRUE)) {
+      return(short)
+    }
+  }
+
+  return(shQuote(norm))
+}
+
+
+#' Verify AWK Interpreter Availability
+#'
+#' @return A character string representing the verified path to the AWK binary.
+#' @keywords internal
 check.awk.availability <- function() {
   awk_path <- Sys.which("awk")
   if (awk_path == "") {
-    stop(
-      "AWK interpreter not found on your system PATH.\n",
-      "Please install AWK or ensure it is accessible.\n",
-      "- Windows users: Install Rtools or add Git Bash to your system PATH.\n",
-      "- Mac/Linux users: Install via your default system package manager.",
-      call. = FALSE
-    )
+    tryCatch({
+      awk_path <- find.awk.binary()
+    }, error = function(e) {
+      stop(
+        "AWK interpreter not found on your system PATH.\n",
+        "Please install AWK or ensure it is accessible.\n",
+        "- Windows users: Install Rtools or add Git Bash to your system PATH.\n",
+        "- Mac/Linux users: Install via your default system package manager.",
+        call. = FALSE
+      )
+    })
   }
   return(awk_path)
 }
@@ -67,8 +100,10 @@ check.awk.availability <- function() {
 find.awk.binary <- function() {
   system_path <- Sys.which("awk")
   if (system_path != "") {
-    return(unname(system_path))
+    awk_path <- unname(system_path)
+    return(normalizePath(awk_path, winslash = "/", mustWork = FALSE))
   }
+
   if (.Platform$OS.type == "windows") {
     potential_dirs <- c(
       list.files("C:/", pattern = "^rtools[0-9]*", full.names = TRUE),
@@ -76,15 +111,18 @@ find.awk.binary <- function() {
       "C:/Program Files/Git",
       "C:/Program Files (x86)/Git"
     )
+
     possible_bin_paths <- c(
       paste0(potential_dirs, "/usr/bin/awk.exe"),
       paste0(potential_dirs, "/bin/awk.exe")
     )
+
     valid_paths <- possible_bin_paths[file.exists(possible_bin_paths)]
     if (length(valid_paths) > 0) {
-      return(normalizePath(valid_paths[1]))
+      return(normalizePath(valid_paths[1], winslash = "/", mustWork = FALSE))
     }
   }
+
   stop(
     "AWK interpreter could not be automatically detected on your system PATH.\n",
     "Please ensure Rtools or Git is installed, or supply an explicit path.",
@@ -92,6 +130,7 @@ find.awk.binary <- function() {
   )
 }
 
+
 #' Execute AWK Script over Batches of Files (Internal Engine)
 #'
 #' An internal helper function that splits file processing into batches, constructs
@@ -118,85 +157,7 @@ find.awk.binary <- function() {
 #'
 #' @importFrom data.table fread setnames
 #' @keywords internal
-#' Execute AWK Script over Batches of Files (Internal Engine)
-#'
-#' An internal helper function that splits file processing into batches, constructs
-#' systemic shell commands to invoke AWK, and streams the processed text strings
-#' back into R via \code{data.table::fread}.
-#'
-#' @param awk.script.content A character string containing the raw body of the AWK script logic.
-#' @param the.files A character vector of normalized paths to the target files.
-#' @param value.code A character string indicating the identifier for code-only return mode.
-#' @param header.names A character vector of column names to assign to the resulting dataset.
-#' @param include.filename A logical value indicating whether to append the source filename tracking column.
-#' @param num.batches An integer specifying the total number of batches to chunk files into.
-#' @param num.files.per.batch An integer specifying the maximum number of files processed per AWK execution window.
-#' @param path.to.awk A character string designating the system path or command name for the AWK binary.
-#' @param total.files An integer tracking the total count of valid files to process.
-#' @param show.warnings A logical value. If \code{FALSE}, wraps the internal engine reading in \code{suppressWarnings}.
-#' @param nrows A numeric value restricting the maximum number of rows to read per batch chunk.
-#' @param file.header A character string establishing the column header name for file origin logging.
-#' @param return.as A character string controlling the return type format (\code{"result"}, \code{"code"}, or \code{"all"}).
-#'
-#' @return A named list containing two elements:
-#' \item{list.data}{A list of data tables containing parsed chunk outputs.}
-#' \item{expanded.statements}{A character vector containing the raw shell strings passed to the system command pipeline.}
-#'
-#' @importFrom data.table fread setnames
-#' @keywords internal
-#' Execute AWK Script over Batches of Files (Internal Engine)
-#'
-#' An internal helper function that splits file processing into batches, constructs
-#' systemic shell commands to invoke AWK, and streams the processed text strings
-#' back into R via \code{data.table::fread}.
-#'
-#' @param awk.script.content A character string containing the raw body of the AWK script logic.
-#' @param the.files A character vector of normalized paths to the target files.
-#' @param value.code A character string indicating the identifier for code-only return mode.
-#' @param header.names A character vector of column names to assign to the resulting dataset.
-#' @param include.filename A logical value indicating whether to append the source filename tracking column.
-#' @param num.batches An integer specifying the total number of batches to chunk files into.
-#' @param num.files.per.batch An integer specifying the maximum number of files processed per AWK execution window.
-#' @param path.to.awk A character string designating the system path or command name for the AWK binary.
-#' @param total.files An integer tracking the total count of valid files to process.
-#' @param show.warnings A logical value. If \code{FALSE}, wraps the internal engine reading in \code{suppressWarnings}.
-#' @param nrows A numeric value restricting the maximum number of rows to read per batch chunk.
-#' @param file.header A character string establishing the column header name for file origin logging.
-#' @param return.as A character string controlling the return type format (\code{"result"}, \code{"code"}, or \code{"all"}).
-#'
-#' @return A named list containing two elements:
-#' \item{list.data}{A list of data tables containing parsed chunk outputs.}
-#' \item{expanded.statements}{A character vector containing the raw shell strings passed to the system command pipeline.}
-#'
-#' @importFrom data.table fread setnames
-#' @keywords internal
-execute.awk.stream <- function(awk.script.content, the.files, value.code, header.names, include.filename,
-                                num.batches, num.files.per.batch, path.to.awk, total.files, show.warnings,
-                                nrows, file.header, return.as) {
-
-  if (is.null(path.to.awk) || length(path.to.awk) == 0 || !nzchar(path.to.awk) || !file.exists(path.to.awk)) {
-    stop(sprintf(
-      "AWK binary not found or invalid ('%s'). Run find.awk.binary()/check.awk.availability() first.",
-      if (is.null(path.to.awk) || length(path.to.awk) == 0) "NULL" else path.to.awk
-    ), call. = FALSE)
-  }
-
-  is.windows <- .Platform$OS.type == "windows"
-
-  # fread(cmd=) uses shell() on Windows, which prefers R_SHELL/SHELL over
-  # COMSPEC if either is set. Force COMSPEC (cmd.exe) for this call, since
-  # the quoting below is built specifically for cmd.exe. See ?shell.
-  if (is.windows) {
-    old.shell  <- Sys.getenv("SHELL",   unset = NA)
-    old.rshell <- Sys.getenv("R_SHELL", unset = NA)
-    Sys.unsetenv("SHELL")
-    Sys.unsetenv("R_SHELL")
-    on.exit({
-      if (!is.na(old.shell))  Sys.setenv(SHELL = old.shell)
-      if (!is.na(old.rshell)) Sys.setenv(R_SHELL = old.rshell)
-    }, add = TRUE)
-  }
-
+execute.awk.stream <- function(awk.script.content, the.files, value.code, header.names, include.filename, num.batches, num.files.per.batch, path.to.awk, total.files, show.warnings, nrows, file.header, return.as) {
   awk.statements <- character(length = num.batches)
   expanded.statements <- character(length = num.batches)
   list.data <- list()
@@ -205,46 +166,24 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
   writeLines(awk.script.content, con = temp.script)
   on.exit(unlink(temp.script), add = TRUE)
 
-  norm.awk.path    <- normalizePath(path.to.awk, mustWork = TRUE)
-  norm.temp.script <- normalizePath(temp.script,  mustWork = TRUE)
+  safe.path.to.awk <- quote_path(path.to.awk)
+  safe.temp.script <- quote_path(temp.script)
 
-  if (is.windows) {
-    safe.awk.path    <- shQuote(norm.awk.path, type = "cmd")
-    safe.temp.script <- shQuote(norm.temp.script, type = "cmd")
-  } else {
-    safe.awk.path    <- shQuote(norm.awk.path)
-    safe.temp.script <- shQuote(norm.temp.script)
-  }
-
-  for (i in seq_len(num.batches)) {
+  for (i in 1:num.batches) {
     batch.files <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
-    norm.batch.files <- normalizePath(batch.files, mustWork = TRUE)
 
-    safe.batch.files <- if (is.windows) {
-      shQuote(norm.batch.files, type = "cmd")
-    } else {
-      shQuote(norm.batch.files)
-    }
+    safe.batch.files <- vapply(batch.files, quote_path, FUN.VALUE = character(1), USE.NAMES = FALSE)
     pasted.file.names <- paste(safe.batch.files, collapse = " ")
 
-    inner.cmd <- sprintf("%s -f %s %s", safe.awk.path, safe.temp.script, pasted.file.names)
-
-    awk.statements[i] <- if (is.windows) shQuote(inner.cmd, type = "cmd2") else inner.cmd
-
-    expanded.statements[i] <- sprintf("%s -f '%s' %s", norm.awk.path, awk.script.content,
-                                       paste(norm.batch.files, collapse = " "))
+    awk.statements[i] <- sprintf("%s -f %s %s", safe.path.to.awk, safe.temp.script, pasted.file.names)
+    expanded.statements[i] <- sprintf("%s '%s' %s", safe.path.to.awk, awk.script.content, pasted.file.names)
 
     if (return.as != value.code) {
-      run.fread <- function() {
-        fread(cmd = awk.statements[i], fill = TRUE, nrows = nrows, header = FALSE, sep = ",")
+      if (show.warnings == TRUE) {
+        batch.data <- fread(cmd = awk.statements[i], fill = TRUE, nrows = nrows, header = FALSE, sep = ",")
+      } else {
+        suppressWarnings(batch.data <- fread(cmd = awk.statements[i], fill = TRUE, nrows = nrows, header = FALSE, sep = ","))
       }
-      batch.data <- tryCatch(
-        if (show.warnings) run.fread() else suppressWarnings(run.fread()),
-        error = function(e) {
-          stop(sprintf("AWK command failed.\nCommand: %s\nOriginal error: %s",
-                        awk.statements[i], conditionMessage(e)), call. = FALSE)
-        }
-      )
       if (nrow(batch.data) > 0) {
         if (!include.filename) {
           setnames(batch.data, header.names)
@@ -258,6 +197,7 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
 
   return(list(list.data = list.data, expanded.statements = expanded.statements))
 }
+
 
 #' Resolve and Filter Target File Paths
 #'
@@ -314,7 +254,7 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
   }
 
   all.files <- c(file.paths, discovered.files)
-  all.files <- normalizePath(all.files, mustWork = FALSE)
+  all.files <- normalizePath(all.files, winslash = "/", mustWork = FALSE)
   the.files <- unique(all.files[file.exists(all.files) & !dir.exists(all.files)])
 
   if (length(the.files) == 0) {
