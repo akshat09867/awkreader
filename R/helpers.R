@@ -132,8 +132,8 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
   for (i in 1:num.batches) {
     batch.files <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
     pasted.file.names <- paste(shQuote(batch.files), collapse = " ")
-    awk.statements[i] <- sprintf("%s -f %s %s", path.to.awk, shQuote(normalizePath(temp.script, mustWork = FALSE)), pasted.file.names)
-    expanded.statements[i] <- sprintf("%s '%s' %s", path.to.awk, awk.script.content, pasted.file.names)
+    awk.statements[i] <- sprintf("%s -f %s %s", shQuote(path.to.awk), shQuote(normalizePath(temp.script, mustWork = FALSE)), pasted.file.names)
+    expanded.statements[i] <- sprintf("%s '%s' %s", shQuote(path.to.awk), awk.script.content, pasted.file.names)
     if (return.as != value.code) {
       if (show.warnings == TRUE) {
         batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ",")
