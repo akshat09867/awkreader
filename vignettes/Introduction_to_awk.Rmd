@@ -58,7 +58,7 @@ The applications of the awkreader package can be quite beneficial in the followi
 
 ## Data Files
 
-In order to demonstrate the capabilities of the awkreader package, we have posted the following files to **[ratings-data repository](https://drive.google.com/drive/folders/1QiVqV_HGhVWNrMFJcqPbKUz7jetw4anb)**:
+In order to demonstrate the capabilities of the awkreader package, we have posted the following files to **[ratings-data folder](https://drive.google.com/drive/folders/1QiVqV_HGhVWNrMFJcqPbKUz7jetw4anb)**:
 
 * **Ratings Data**:  This folder contains many files of simulated ratings.  Each file contains variables for the user's identifier, product's identifier, and an integer rating from 1 to 5.  The data are separated into individual files for each user. All of the files are comma separated values (CSV) files with the same headers and ordering of the variables.
 

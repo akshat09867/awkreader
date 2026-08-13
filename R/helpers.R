@@ -147,6 +147,17 @@ find.awk.binary <- function() {
 execute.awk.stream <- function(awk.script.content, the.files, value.code, header.names, include.filename,
                                 num.batches, num.files.per.batch, path.to.awk, total.files, show.warnings,
                                 nrows, file.header, return.as) {
+
+  if (is.null(path.to.awk) || length(path.to.awk) == 0 || !nzchar(path.to.awk) || !file.exists(path.to.awk)) {
+    stop(sprintf(
+      "AWK binary not found or invalid ('%s'). Run find.awk.binary()/check.awk.availability() first.",
+      if (is.null(path.to.awk) || length(path.to.awk) == 0) "NULL" else path.to.awk
+    ), call. = FALSE)
+  }
+
+  is.windows <- .Platform$OS.type == "windows"
+  q <- function(x) if (is.windows) shQuote(x, type = "cmd") else shQuote(x)
+
   awk.statements <- character(length = num.batches)
   expanded.statements <- character(length = num.batches)
   list.data <- list()
@@ -155,39 +166,41 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
   writeLines(awk.script.content, con = temp.script)
   on.exit(unlink(temp.script), add = TRUE)
 
-  is.windows <- .Platform$OS.type == "windows"
+  norm.awk.path    <- normalizePath(path.to.awk, mustWork = TRUE)
+  norm.temp.script <- normalizePath(temp.script,  mustWork = TRUE)
 
-  norm.awk.path    <- normalizePath(path.to.awk, mustWork = FALSE)
-  norm.temp.script <- normalizePath(temp.script, mustWork = FALSE)
-
-  if (is.windows) {
-    safe.awk.path    <- shQuote(norm.awk.path, type = "cmd")
-    safe.temp.script <- shQuote(norm.temp.script, type = "cmd")
-  } else {
-    safe.awk.path    <- shQuote(norm.awk.path)
-    safe.temp.script <- shQuote(norm.temp.script)
-  }
-
-  for (i in 1:num.batches) {
+  for (i in seq_len(num.batches)) {
     batch.files <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
-    norm.batch.files <- normalizePath(batch.files, mustWork = FALSE)
+    norm.batch.files <- normalizePath(batch.files, mustWork = TRUE)
 
-    safe.batch.files <- if (is.windows) {
-      shQuote(norm.batch.files, type = "cmd")
-    } else {
-      shQuote(norm.batch.files)
-    }
-    pasted.file.names <- paste(safe.batch.files, collapse = " ")
+    awk.args <- c("-f", q(norm.temp.script), q(norm.batch.files))
 
-    awk.statements[i]      <- sprintf("%s -f %s %s", safe.awk.path, safe.temp.script, pasted.file.names)
-    expanded.statements[i] <- sprintf("%s '%s' %s", norm.awk.path, awk.script.content, pasted.file.names)
+    awk.statements[i]      <- paste(q(norm.awk.path), paste(awk.args, collapse = " "))
+    expanded.statements[i] <- sprintf("%s -f '%s' %s", norm.awk.path, awk.script.content,
+                                       paste(norm.batch.files, collapse = " "))
 
     if (return.as != value.code) {
-      if (show.warnings == TRUE) {
-        batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ",")
-      } else {
-        suppressWarnings(batch.data <- fread(cmd = awk.statements[i], fill = T, nrows = nrows, header = FALSE, sep = ","))
+      out.tmp <- tempfile(fileext = ".out")
+      err.tmp <- tempfile(fileext = ".err")
+
+      exit.code <- system2(norm.awk.path, args = awk.args, stdout = out.tmp, stderr = err.tmp)
+
+      if (exit.code != 0) {
+        err.msg <- if (file.exists(err.tmp)) paste(readLines(err.tmp, warn = FALSE), collapse = "\n") else ""
+        unlink(c(out.tmp, err.tmp))
+        stop(sprintf(
+          "AWK execution failed (exit code %s).\nCommand: %s %s\n%s",
+          exit.code, norm.awk.path, paste(awk.args, collapse = " "), err.msg
+        ), call. = FALSE)
       }
+
+      if (show.warnings == TRUE) {
+        batch.data <- fread(file = out.tmp, fill = TRUE, nrows = nrows, header = FALSE, sep = ",")
+      } else {
+        suppressWarnings(batch.data <- fread(file = out.tmp, fill = TRUE, nrows = nrows, header = FALSE, sep = ","))
+      }
+      unlink(c(out.tmp, err.tmp))
+
       if (nrow(batch.data) > 0) {
         if (!include.filename) {
           setnames(batch.data, header.names)
@@ -201,7 +214,6 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
 
   return(list(list.data = list.data, expanded.statements = expanded.statements))
 }
-
 
 #' Resolve and Filter Target File Paths
 #'
