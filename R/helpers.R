@@ -76,15 +76,18 @@ find.awk.binary <- function() {
       "C:/Program Files/Git",
       "C:/Program Files (x86)/Git"
     )
+
     possible_bin_paths <- c(
       paste0(potential_dirs, "/usr/bin/awk.exe"),
       paste0(potential_dirs, "/bin/awk.exe")
     )
+
     valid_paths <- possible_bin_paths[file.exists(possible_bin_paths)]
     if (length(valid_paths) > 0) {
       return(normalizePath(valid_paths[1]))
     }
   }
+
   stop(
     "AWK interpreter could not be automatically detected on your system PATH.\n",
     "Please ensure Rtools or Git is installed, or supply an explicit path.",
@@ -92,58 +95,6 @@ find.awk.binary <- function() {
   )
 }
 
-#' Execute AWK Script over Batches of Files (Internal Engine)
-#'
-#' An internal helper function that splits file processing into batches, constructs
-#' systemic shell commands to invoke AWK, and streams the processed text strings
-#' back into R via \code{data.table::fread}.
-#'
-#' @param awk.script.content A character string containing the raw body of the AWK script logic.
-#' @param the.files A character vector of normalized paths to the target files.
-#' @param value.code A character string indicating the identifier for code-only return mode.
-#' @param header.names A character vector of column names to assign to the resulting dataset.
-#' @param include.filename A logical value indicating whether to append the source filename tracking column.
-#' @param num.batches An integer specifying the total number of batches to chunk files into.
-#' @param num.files.per.batch An integer specifying the maximum number of files processed per AWK execution window.
-#' @param path.to.awk A character string designating the system path or command name for the AWK binary.
-#' @param total.files An integer tracking the total count of valid files to process.
-#' @param show.warnings A logical value. If \code{FALSE}, wraps the internal engine reading in \code{suppressWarnings}.
-#' @param nrows A numeric value restricting the maximum number of rows to read per batch chunk.
-#' @param file.header A character string establishing the column header name for file origin logging.
-#' @param return.as A character string controlling the return type format (\code{"result"}, \code{"code"}, or \code{"all"}).
-#'
-#' @return A named list containing two elements:
-#' \item{list.data}{A list of data tables containing parsed chunk outputs.}
-#' \item{expanded.statements}{A character vector containing the raw shell strings passed to the system command pipeline.}
-#'
-#' @importFrom data.table fread setnames
-#' @keywords internal
-#' Execute AWK Script over Batches of Files (Internal Engine)
-#'
-#' An internal helper function that splits file processing into batches, constructs
-#' systemic shell commands to invoke AWK, and streams the processed text strings
-#' back into R via \code{data.table::fread}.
-#'
-#' @param awk.script.content A character string containing the raw body of the AWK script logic.
-#' @param the.files A character vector of normalized paths to the target files.
-#' @param value.code A character string indicating the identifier for code-only return mode.
-#' @param header.names A character vector of column names to assign to the resulting dataset.
-#' @param include.filename A logical value indicating whether to append the source filename tracking column.
-#' @param num.batches An integer specifying the total number of batches to chunk files into.
-#' @param num.files.per.batch An integer specifying the maximum number of files processed per AWK execution window.
-#' @param path.to.awk A character string designating the system path or command name for the AWK binary.
-#' @param total.files An integer tracking the total count of valid files to process.
-#' @param show.warnings A logical value. If \code{FALSE}, wraps the internal engine reading in \code{suppressWarnings}.
-#' @param nrows A numeric value restricting the maximum number of rows to read per batch chunk.
-#' @param file.header A character string establishing the column header name for file origin logging.
-#' @param return.as A character string controlling the return type format (\code{"result"}, \code{"code"}, or \code{"all"}).
-#'
-#' @return A named list containing two elements:
-#' \item{list.data}{A list of data tables containing parsed chunk outputs.}
-#' \item{expanded.statements}{A character vector containing the raw shell strings passed to the system command pipeline.}
-#'
-#' @importFrom data.table fread setnames
-#' @keywords internal
 #' Execute AWK Script over Batches of Files (Internal Engine)
 #'
 #' An internal helper function that splits file processing into batches, constructs
@@ -183,7 +134,6 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
       if (nzchar(found)) unname(found) else NA_character_
     }
   }
-
   if (is.na(resolved.awk.path)) {
     stop(sprintf(
       "AWK binary not found or invalid ('%s'). Run find.awk.binary()/check.awk.availability() first.",
@@ -235,15 +185,7 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
     pasted.file.names <- paste(safe.batch.files, collapse = " ")
 
     awk.statements[i]      <- sprintf("%s -f %s %s", safe.awk.path, safe.temp.script, pasted.file.names)
-    expanded.statements[i] <- sprintf("%s -f '%s' %s", norm.awk.path, awk.script.content,
-                                       paste(norm.batch.files, collapse = " "))
-
-    if (nchar(awk.statements[i]) > 7000) {
-      warning(sprintf(
-        "AWK command for batch %d is %d characters - approaching cmd.exe's ~8191-character line limit. Consider lowering num.files.per.batch.",
-        i, nchar(awk.statements[i])
-      ), call. = FALSE)
-    }
+    expanded.statements[i] <- sprintf("%s -f '%s' %s", safe.awk.path, awk.script.content, pasted.file.names)
 
     if (return.as != value.code) {
       run.fread <- function() {
@@ -252,8 +194,9 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
       batch.data <- tryCatch(
         if (show.warnings) run.fread() else suppressWarnings(run.fread()),
         error = function(e) {
-          stop(sprintf("AWK command failed (length %d chars).\nCommand: %s\nOriginal error: %s",
-                        nchar(awk.statements[i]), awk.statements[i], conditionMessage(e)), call. = FALSE)
+          stop(sprintf("AWK command failed.\nSHELL=%s R_SHELL=%s\nCommand: %s\nOriginal error: %s",
+                        Sys.getenv("SHELL", "<unset>"), Sys.getenv("R_SHELL", "<unset>"),
+                        awk.statements[i], conditionMessage(e)), call. = FALSE)
         }
       )
       if (nrow(batch.data) > 0) {
@@ -271,23 +214,7 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
 }
 
 
-#' Resolve and Filter Target File Paths
-#'
-#' Internal helper to resolve directory paths, glob patterns, and file vectors
-#' into a clean, deduplicated vector of validated file paths.
-#'
-#' @param the.files Character vector. File paths, directory paths, or glob patterns.
-#' @param file.pattern Optional character string to filter file names when directories
-#'   are processed. Accepts simple extensions (e.g., \code{"csv"} or \code{".csv"}),
-#'   wildcards (e.g., \code{"*.csv"}), or regular expressions (e.g., \code{"\\.csv$"}).
-#'   Default is \code{NULL}.
-#' @param recursive Logical. Should directory searches recurse into subdirectories?
-#'   Default is \code{FALSE}.
-#'
-#' @return A character vector of unique, normalized, verified existing file paths.
-#'
-#' @importFrom utils glob2rx
-#' @noRd
+
 .resolve.files <- function(the.files, file.pattern = NULL, recursive = FALSE) {
   expanded.files <- Sys.glob(the.files)
 
