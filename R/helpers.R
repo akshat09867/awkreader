@@ -124,6 +124,7 @@ find.awk.binary <- function() {
 execute.awk.stream <- function(awk.script.content, the.files, value.code, header.names, include.filename,
                                 num.batches, num.files.per.batch, path.to.awk, total.files, show.warnings,
                                 nrows, file.header, return.as) {
+
   resolved.awk.path <- {
     if (is.null(path.to.awk) || length(path.to.awk) == 0 || !nzchar(path.to.awk)) {
       NA_character_
@@ -154,6 +155,8 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
     }, add = TRUE)
   }
 
+  max.cmd.chars <- if (is.windows) 7000L else Inf
+
   awk.statements <- character(length = num.batches)
   expanded.statements <- character(length = num.batches)
   list.data <- list()
@@ -172,33 +175,59 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
     safe.awk.path    <- shQuote(norm.awk.path)
     safe.temp.script <- shQuote(norm.temp.script)
   }
+  fixed.prefix.chars <- nchar(safe.awk.path) + nchar(safe.temp.script) + 10L  # flags and spaces
+
+  quote.paths <- function(x) {
+    if (is.windows) shQuote(x, type = "cmd") else shQuote(x)
+  }
+
+  run.chunk <- function(files.chunk) {
+    pasted <- paste(quote.paths(files.chunk), collapse = " ")
+    sprintf("%s -f %s %s", safe.awk.path, safe.temp.script, pasted)
+  }
 
   for (i in seq_len(num.batches)) {
     batch.files <- the.files[((i - 1) * num.files.per.batch + 1):min(total.files, i * num.files.per.batch)]
     norm.batch.files <- normalizePath(batch.files, mustWork = FALSE)
 
-    safe.batch.files <- if (is.windows) {
-      shQuote(norm.batch.files, type = "cmd")
-    } else {
-      shQuote(norm.batch.files)
+    file.chunks <- list()
+    current <- character(0)
+    current.len <- fixed.prefix.chars
+    for (f in norm.batch.files) {
+      f.len <- nchar(f) + 3L
+      if (length(current) > 0 && (current.len + f.len) > max.cmd.chars) {
+        file.chunks[[length(file.chunks) + 1]] <- current
+        current <- character(0)
+        current.len <- fixed.prefix.chars
+      }
+      current <- c(current, f)
+      current.len <- current.len + f.len
     }
-    pasted.file.names <- paste(safe.batch.files, collapse = " ")
+    if (length(current) > 0) file.chunks[[length(file.chunks) + 1]] <- current
 
-    awk.statements[i]      <- sprintf("%s -f %s %s", safe.awk.path, safe.temp.script, pasted.file.names)
-    expanded.statements[i] <- sprintf("%s -f '%s' %s", safe.awk.path, awk.script.content, pasted.file.names)
+    chunk.cmds <- vapply(file.chunks, run.chunk, character(1))
+    awk.statements[i] <- paste(chunk.cmds, collapse = " && ")
+
+    expanded.statements[i] <- sprintf("%s -f \"%s\" %s",
+                                      safe.awk.path,
+                                      awk.script.content,
+                                      paste(quote.paths(norm.batch.files), collapse = " "))
 
     if (return.as != value.code) {
-      run.fread <- function() {
-        fread(cmd = awk.statements[i], fill = TRUE, nrows = nrows, header = FALSE, sep = ",")
+      chunk.results <- vector("list", length(chunk.cmds))
+      for (j in seq_along(chunk.cmds)) {
+        cmd <- chunk.cmds[j]
+        run.fread <- function() fread(cmd = cmd, fill = TRUE, nrows = nrows, header = FALSE, sep = ",")
+        chunk.results[[j]] <- tryCatch(
+          if (show.warnings) run.fread() else suppressWarnings(run.fread()),
+          error = function(e) {
+            stop(sprintf("AWK command failed (length %d chars, chunk %d/%d of batch %d).\nCommand: %s\nOriginal error: %s",
+                         nchar(cmd), j, length(chunk.cmds), i, cmd, conditionMessage(e)), call. = FALSE)
+          }
+        )
       }
-      batch.data <- tryCatch(
-        if (show.warnings) run.fread() else suppressWarnings(run.fread()),
-        error = function(e) {
-          stop(sprintf("AWK command failed.\nSHELL=%s R_SHELL=%s\nCommand: %s\nOriginal error: %s",
-                        Sys.getenv("SHELL", "<unset>"), Sys.getenv("R_SHELL", "<unset>"),
-                        awk.statements[i], conditionMessage(e)), call. = FALSE)
-        }
-      )
+      batch.data <- data.table::rbindlist(chunk.results, use.names = FALSE, fill = TRUE)
+
       if (nrow(batch.data) > 0) {
         if (!include.filename) {
           setnames(batch.data, header.names)
@@ -212,7 +241,6 @@ execute.awk.stream <- function(awk.script.content, the.files, value.code, header
 
   return(list(list.data = list.data, expanded.statements = expanded.statements))
 }
-
 
 
 .resolve.files <- function(the.files, file.pattern = NULL, recursive = FALSE) {
